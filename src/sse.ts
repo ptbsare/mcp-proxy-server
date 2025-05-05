@@ -1,17 +1,121 @@
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
+import session from 'express-session';
+import { readFile, writeFile } from 'fs/promises';
+import path from 'path';
 import { createServer } from "./mcp-proxy.js";
 import http from 'http';
+import { fileURLToPath } from 'url';
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 const expressServer = http.createServer(app);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const CONFIG_PATH = path.resolve(__dirname, '..', 'config', 'mcp_server.json');
 
 const { server, cleanup } = await createServer();
 
 const allowedKeysRaw = process.env.MCP_PROXY_SSE_ALLOWED_KEYS || "";
 const allowedKeys = new Set(allowedKeysRaw.split(',').map(k => k.trim()).filter(k => k.length > 0));
 console.log(`SSE Authentication: ${allowedKeys.size > 0 ? `${allowedKeys.size} key(s) configured.` : 'No keys configured (disabled).'}`);
+
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'unsafe-default-secret';
+
+if (ADMIN_PASSWORD === 'password' || SESSION_SECRET === 'unsafe-default-secret') {
+    console.warn("WARNING: Using default admin credentials or session secret. Set ADMIN_USERNAME, ADMIN_PASSWORD, and SESSION_SECRET environment variables for security.");
+}
+
+const enableAdminUI = process.env.ENABLE_ADMIN_UI === 'true';
+
+declare module 'express-session' {
+  interface SessionData {
+    user?: { username: string };
+  }
+}
+
+app.use(session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 1000 * 60 * 60 * 24 }
+}));
+
+const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
+    if (req.session.user) {
+        next();
+    } else {
+        if (req.headers.accept?.includes('application/json')) {
+             res.status(401).json({ error: 'Unauthorized' });
+        } else {
+             res.status(401).send('Unauthorized. Please login via the admin interface.');
+        }
+    }
+};
+
+
+app.post('/admin/login', (req, res) => {
+    const { username, password } = req.body;
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+        req.session.user = { username: username };
+        console.log(`Admin user '${username}' logged in.`);
+        res.json({ success: true });
+    } else {
+        console.warn(`Failed admin login attempt for username: '${username}'`);
+        res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
+});
+
+app.post('/admin/logout', (req, res) => {
+    const username = req.session.user?.username;
+    req.session.destroy((err) => {
+        if (err) {
+            console.error("Error destroying session:", err);
+            return res.status(500).json({ success: false, error: 'Failed to logout' });
+        }
+        console.log(`Admin user '${username}' logged out.`);
+        res.clearCookie('connect.sid');
+        res.json({ success: true });
+    });
+});
+
+app.get('/admin/config', isAuthenticated, async (req, res) => {
+    try {
+        console.log("Admin request: GET /admin/config");
+        const configData = await readFile(CONFIG_PATH, 'utf-8');
+        res.setHeader('Content-Type', 'application/json');
+        res.send(configData);
+    } catch (error: any) {
+        console.error(`Error reading config file at ${CONFIG_PATH}:`, error);
+        if (error.code === 'ENOENT') {
+             res.status(404).json({ error: 'Configuration file not found.' });
+        } else {
+             res.status(500).json({ error: 'Failed to read configuration file.' });
+        }
+    }
+});
+
+app.post('/admin/config', isAuthenticated, async (req, res) => {
+    try {
+        console.log("Admin request: POST /admin/config");
+        const newConfigData = req.body;
+
+        if (typeof newConfigData !== 'object' || newConfigData === null) {
+            return res.status(400).json({ error: 'Invalid configuration format: Expected a JSON object.' });
+        }
+
+        const configString = JSON.stringify(newConfigData, null, 2);
+        await writeFile(CONFIG_PATH, configString, 'utf-8');
+        console.log(`Configuration file updated successfully by admin '${req.session.user?.username}'.`);
+        res.json({ success: true });
+    } catch (error) {
+        console.error(`Error writing config file at ${CONFIG_PATH}:`, error);
+        res.status(500).json({ error: 'Failed to write configuration file.' });
+    }
+});
 
 const sseTransports = new Map<string, SSEServerTransport>();
 
@@ -119,6 +223,9 @@ const PORT = process.env.PORT || 3663;
 
 expressServer.listen(PORT, () => {
   console.log(`SSE Server is running on http://localhost:${PORT}`);
+  if (enableAdminUI) {
+      console.log(`Admin UI available at http://localhost:${PORT}/admin`);
+  }
 });
 
 const shutdown = async (signal: string) => {

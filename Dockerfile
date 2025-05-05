@@ -54,16 +54,35 @@ RUN if [ -n "$PRE_INSTALLED_INIT_COMMAND" ]; then \
     
 COPY package.json package-lock.json* ./
 
+COPY public ./public # Copy the admin UI files
 COPY . .
 
 RUN npm install
 RUN npm run build
 
-VOLUME /mcp-proxy-server/config
-VOLUME /tools
+# --- Environment Variables ---
+# Port for the SSE server (and Admin UI if enabled)
+ENV PORT=3663
 
-EXPOSE 3663
+# Optional: Allowed API keys for SSE endpoint (comma-separated)
+# ENV MCP_PROXY_SSE_ALLOWED_KEYS=""
 
+# Optional: Enable Admin Web UI (set to "true" to enable)
+ENV ENABLE_ADMIN_UI=false
+
+# Optional: Admin UI Credentials (required if ENABLE_ADMIN_UI=true)
+# It's recommended to set these via `docker run -e` instead of hardcoding here
+ENV ADMIN_USERNAME=admin
+ENV ADMIN_PASSWORD=password # WARNING: Change this default!
+
+# --- Volumes ---
+VOLUME /mcp-proxy-server/config # For mcp_server.json and .session_secret
+VOLUME /tools # For external tools referenced in config
+
+# --- Expose Port ---
+EXPOSE 3663 # Default port, adjust if PORT env var is different
+
+# --- Entrypoint & Command ---
 ENTRYPOINT ["tini", "--"]
 
 CMD ["node", "build/sse.js"]

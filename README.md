@@ -79,6 +79,43 @@ export MCP_PROXY_SSE_ALLOWED_KEYS="key1,key2,another-secure-key"
 - If this variable is not set or is empty, authentication is disabled, and any client can connect to `/sse`.
 - Clients must provide one of the allowed keys either via the `X-API-Key` HTTP header or the `key` query parameter (e.g., `/sse?key=key1`).
 
+### Admin Web UI (Optional)
+
+An optional web-based UI is available for managing the `config/mcp_server.json` file directly through your browser.
+
+**Enabling the Admin UI:**
+
+Set the `ENABLE_ADMIN_UI` environment variable to `true`:
+
+```bash
+export ENABLE_ADMIN_UI=true
+```
+
+By default, the Admin UI is **disabled**.
+
+**Admin UI Configuration:**
+
+When enabled, the following environment variables are used:
+
+-   `ADMIN_USERNAME`: The username for logging into the admin UI. (Default: `admin`)
+-   `ADMIN_PASSWORD`: The password for logging into the admin UI. (Default: `password` - **Change this for security!**)
+
+Example:
+```bash
+export ADMIN_USERNAME=myadmin
+export ADMIN_PASSWORD=aVerySecurePassword
+```
+
+**Session Security:**
+
+The admin UI uses sessions secured by a secret key. This key is automatically generated and stored in `config/.session_secret` the first time the server runs with the admin UI enabled. **Do not commit this file to version control.** (`.gitignore` has been updated to exclude it). If this file is deleted, a new one will be generated, and all active admin sessions will be invalidated.
+
+**Accessing the Admin UI:**
+
+Once the server is running with `ENABLE_ADMIN_UI=true`, access the UI at `http://localhost:PORT/admin` (e.g., `http://localhost:3663/admin`). Log in using the configured `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
+
+**Security Warning:** The authentication provided is basic. This feature is intended for local development or use within a trusted network. **Do not expose the admin UI directly to the internet without implementing additional security measures (HTTPS, robust authentication, etc.).**
+
 ## Development
 
 Install dependencies (uses `@modelcontextprotocol/sdk` v1.11.0 or later):
