@@ -8,9 +8,8 @@ on:
   workflow_dispatch: # Allows manual triggering
 
 permissions:
-  contents: read # Needed to check out code and read package.json
+  contents: read # Needed to check out code, read package.json, and read release info
   packages: write # Needed to push Docker image to GHCR
-  releases: read # Needed to read latest release tag
 
 jobs:
   build-and-publish:
