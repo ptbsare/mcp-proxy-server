@@ -81,7 +81,13 @@ export const createServer = async () => {
           console.log(`      No tools found from ${connectedClient.name}`);
         }
       } catch (error: any) {
-        console.error(`  Error fetching tools from ${connectedClient.name}:`, error?.message || error);
+        const isMethodNotFoundError = error?.name === 'McpError' && error?.code === -32601;
+
+        if (isMethodNotFoundError) {
+          console.warn(`Warning: Method 'tools/list' not found on server ${connectedClient.name}. Proceeding without tools from this source.`);
+        } else {
+          console.error(`  Error fetching tools from ${connectedClient.name}:`, error?.message || error);
+        }
       }
     }
 
@@ -181,8 +187,14 @@ export const createServer = async () => {
           });
           allPrompts.push(...promptsWithSource);
         }
-      } catch (error) {
-        console.error(`Error fetching prompts from ${connectedClient.name}:`, error);
+      } catch (error: any) {
+        const isMethodNotFoundError = error?.name === 'McpError' && error?.code === -32601;
+
+        if (isMethodNotFoundError) {
+          console.warn(`Warning: Method 'prompts/list' not found on server ${connectedClient.name}. Proceeding without prompts from this source.`);
+        } else {
+          console.error(`Error fetching prompts from ${connectedClient.name}:`, error?.message || error);
+        }
       }
     }
 
@@ -219,8 +231,17 @@ export const createServer = async () => {
           });
           allResources.push(...resourcesWithSource);
         }
-      } catch (error) {
-        console.error(`Error fetching resources from ${connectedClient.name}:`, error);
+      } catch (error: any) { // Add type annotation
+        const isMethodNotFoundError = error?.name === 'McpError' && error?.code === -32601;
+
+        if (isMethodNotFoundError) {
+          // Log a warning for "Method not found"
+          console.warn(`Warning: Method 'resources/list' not found on server ${connectedClient.name}. Proceeding without resources from this source.`);
+          // Allow loop to continue
+        } else {
+          // Log other errors as critical errors
+          console.error(`Error fetching resources from ${connectedClient.name}:`, error?.message || error);
+        }
       }
     }
 
@@ -281,8 +302,14 @@ export const createServer = async () => {
           }));
           allTemplates.push(...templatesWithSource);
         }
-      } catch (error) {
-        console.error(`Error fetching resource templates from ${connectedClient.name}:`, error);
+      } catch (error: any) {
+        const isMethodNotFoundError = error?.name === 'McpError' && error?.code === -32601;
+
+        if (isMethodNotFoundError) {
+          console.warn(`Warning: Method 'resources/templates/list' not found on server ${connectedClient.name}. Proceeding without templates from this source.`);
+        } else {
+          console.error(`Error fetching resource templates from ${connectedClient.name}:`, error?.message || error);
+        }
       }
     }
 
