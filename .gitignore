@@ -6,3 +6,5 @@ build/
 index.md
 SETTINGS.md
 reverse-transform.js
+# Session secret file for Admin UI
+config/.session_secret

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Server Config Editor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>MCP Server Configuration</h1>
+
+    <div id="login-section">
+        <h2>Login</h2>
+        <form id="login-form">
+            <div>
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div>
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit">Login</button>
+            <p id="login-error" class="error-message"></p>
+        </form>
+    </div>
+
+    <div id="config-section" style="display: none;">
+        <button id="logout-button">Logout</button>
+        <h2>Edit Configuration</h2>
+        <p>Edit the server configurations below. Click "Save Configuration" to apply changes.</p>
+        <div id="server-list">
+            <!-- Server entries will be loaded here -->
+        </div>
+        <button id="add-server-button">Add New Server</button>
+        <hr>
+        <button id="save-config-button">Save Configuration</button>
+        <p id="save-status" class="status-message"></p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

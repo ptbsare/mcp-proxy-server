@@ -1,0 +1,117 @@
+body {
+    font-family: sans-serif;
+    margin: 20px;
+    background-color: #f4f4f4;
+}
+
+h1, h2 {
+    color: #333;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+}
+
+#login-section, #config-section {
+    background-color: #fff;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="url"],
+input[type="number"],
+textarea {
+    width: calc(100% - 22px); /* Adjust for padding/border */
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+textarea {
+    min-height: 60px;
+    resize: vertical;
+}
+
+button {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-right: 5px;
+    margin-top: 5px;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+#logout-button {
+    background-color: #dc3545;
+    float: right;
+}
+#logout-button:hover {
+    background-color: #c82333;
+}
+
+.error-message {
+    color: red;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+.status-message {
+    color: green;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+.server-entry {
+    border: 1px solid #ddd;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+    background-color: #f9f9f9;
+}
+
+.server-entry h3 {
+    margin-top: 0;
+    color: #555;
+}
+
+.server-entry label {
+    font-weight: normal;
+    color: #666;
+    margin-bottom: 3px;
+}
+
+.server-entry input[type="checkbox"] {
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+.server-entry .delete-button {
+    background-color: #ffc107;
+    color: #333;
+    float: right;
+    padding: 5px 10px;
+}
+.server-entry .delete-button:hover {
+    background-color: #e0a800;
+}
+
+hr {
+    margin: 20px 0;
+    border: 0;
+    border-top: 1px solid #eee;
+}

@@ -23,9 +23,11 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.09.0",
     "@types/cors": "^2.8.17",
+    "@types/express-session": "^1.18.1",
     "cors": "^2.8.5",
     "eventsource": "^3.0.2",
     "express": "^4.21.1",
+    "express-session": "^1.18.1",
     "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {
