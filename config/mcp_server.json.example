@@ -11,6 +11,7 @@
       "command": "server2-command"
     },
     "server3-sse": {
+      "active": "false",
       "url": "http://localhost:8080/sse"
     }
   }

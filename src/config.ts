@@ -2,16 +2,20 @@ import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 
 export type TransportConfigStdio = {
+  name?: string;
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  active?: boolean;
 }
 
 export type TransportConfigSSE = {
+  name?: string;
   url: string;
+  active?: boolean;
 }
 
-export type TransportConfig = TransportConfigStdio | TransportConfigSSE;
+export type TransportConfig = (TransportConfigStdio | TransportConfigSSE) & { name?: string, active?: boolean };
 
 export interface Config {
   mcpServers: Record<string, TransportConfig>;
