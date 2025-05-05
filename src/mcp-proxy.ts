@@ -18,7 +18,7 @@ import {
   GetPromptResultSchema
 } from "@modelcontextprotocol/sdk/types.js";
 import { createClients, ConnectedClient } from './client.js';
-import { Config, loadConfig, TransportConfig, isSSEConfig, isStdioConfig } from './config.js';
+import { Config, loadConfig, TransportConfig, isSSEConfig, isStdioConfig, ToolConfig, loadToolConfig } from './config.js'; // Added ToolConfig, loadToolConfig
 import { z } from 'zod';
 import * as eventsource from 'eventsource';
 
@@ -26,6 +26,7 @@ global.EventSource = eventsource.EventSource
 
 export const createServer = async () => {
   const config = await loadConfig();
+  const toolConfig = await loadToolConfig(); // Load tool configuration
 
   const activeServersConfig: Record<string, TransportConfig> = {};
   for (const serverKey in config.mcpServers) {
@@ -65,8 +66,8 @@ export const createServer = async () => {
 
   server.setRequestHandler(ListToolsRequestSchema, async (request) => {
     console.log("Received tools/list request");
-    const allTools: Tool[] = [];
-    toolToClientMap.clear();
+    const enabledTools: Tool[] = []; // Changed variable name
+    toolToClientMap.clear(); // Clear map before repopulating
     console.log(`Querying ${connectedClients.length} connected clients for tools...`);
 
     for (const connectedClient of connectedClients) {
@@ -75,24 +76,31 @@ export const createServer = async () => {
         const result = await connectedClient.client.request(
           {
             method: 'tools/list',
-            params: {
-              _meta: request.params?._meta
-            }
+            params: { _meta: request.params?._meta }
           },
           ListToolsResultSchema
         );
-        console.log(`    Received response from ${connectedClient.name}:`, JSON.stringify(result));
+        // console.log(`    Received response from ${connectedClient.name}:`, JSON.stringify(result)); // Verbose
 
         if (result.tools && result.tools.length > 0) {
           console.log(`      Found ${result.tools.length} tools from ${connectedClient.name}`);
-          const toolsWithSource = result.tools.map(tool => {
-            toolToClientMap.set(tool.name, connectedClient);
-            return {
-              ...tool,
-              description: `[${connectedClient.name}] ${tool.description || ''}`
-            };
-          });
-          allTools.push(...toolsWithSource);
+          for (const tool of result.tools) {
+            const qualifiedName = `${connectedClient.name}/${tool.name}`;
+            const toolSettings = toolConfig.tools[qualifiedName];
+            const isEnabled = !toolSettings || toolSettings.enabled !== false; // Enabled if not present or explicitly true
+
+            if (isEnabled) {
+              toolToClientMap.set(qualifiedName, connectedClient); // Map qualified name to client
+              enabledTools.push({
+                ...tool,
+                name: qualifiedName, // Use qualified name for uniqueness in proxy response
+                description: `[${connectedClient.name}] ${tool.description || ''}` // Add source prefix to description
+              });
+              // console.log(`        Enabled tool added: ${qualifiedName}`);
+            } else {
+              console.log(`        Tool filtered out (disabled): ${qualifiedName}`);
+            }
+          }
         } else {
           console.log(`      No tools found from ${connectedClient.name}`);
         }
@@ -107,26 +115,38 @@ export const createServer = async () => {
       }
     }
 
-    console.log(`Finished querying clients. Returning ${allTools.length} total tools.`);
-    return { tools: allTools };
+    console.log(`Finished querying clients. Returning ${enabledTools.length} enabled tools.`);
+    return { tools: enabledTools }; // Return only enabled tools
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-    const clientForTool = toolToClientMap.get(name);
+    // Note: 'name' received here is the fully qualified name (e.g., "serverKey/toolName")
+    const { name: qualifiedName, arguments: args } = request.params;
+    const clientForTool = toolToClientMap.get(qualifiedName);
 
     if (!clientForTool) {
-      throw new Error(`Unknown tool: ${name}`);
+      // This should ideally not happen if the client uses the list provided by tools/list,
+      // but good to have a check. It also implicitly handles disabled tools as they won't be in the map.
+      console.error(`Attempted to call unknown or disabled tool: ${qualifiedName}`);
+      throw new Error(`Unknown or disabled tool: ${qualifiedName}`);
     }
 
+    // Extract the original tool name for the backend server
+    const nameParts = qualifiedName.split('/');
+    if (nameParts.length < 2) {
+        console.error(`Invalid qualified tool name format received: ${qualifiedName}`);
+        throw new Error(`Internal error: Invalid tool name format.`);
+    }
+    const originalToolName = nameParts.slice(1).join('/'); // Handle cases where tool name might contain '/'
+
     try {
-      console.log('Forwarding tool call:', name);
+      console.log(`Forwarding tool call for '${qualifiedName}' to server '${clientForTool.name}' as tool '${originalToolName}'`);
 
       return await clientForTool.client.request(
         {
           method: 'tools/call',
           params: {
-            name,
+            name: originalToolName, // Send the original tool name to the backend
             arguments: args || {},
             _meta: {
               progressToken: request.params._meta?.progressToken
@@ -336,5 +356,6 @@ export const createServer = async () => {
     await Promise.all(connectedClients.map(({ cleanup }) => cleanup()));
   };
 
-  return { server, cleanup };
+  // Return the server, cleanup function, and the list of connected clients
+  return { server, cleanup, connectedClients };
 };

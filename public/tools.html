@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Tool Configuration</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>MCP Tool Configuration</h1>
+    <p><a href="index.html">&larr; Back to Server Configuration</a></p>
+
+    <div id="tool-config-section">
+        <button id="logout-button-tools">Logout</button>
+        <h2>Enable/Disable Tools</h2>
+        <p>Check the tools you want to enable. Uncheck to disable. Changes require a server restart to take effect.</p>
+        <div id="tool-list">
+            <!-- Tool entries will be loaded here -->
+            <p>Loading tools...</p>
+        </div>
+        <hr>
+        <button id="save-tool-config-button">Save Tool Configuration</button>
+        <p id="save-tool-status" class="status-message"></p>
+    </div>
+
+    <script src="tools.js"></script>
+</body>
+</html>

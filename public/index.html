@@ -7,10 +7,18 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>MCP Server Configuration</h1>
+    <header>
+        <h1>MCP Proxy Admin</h1>
+        <nav id="main-nav" style="display: none;">
+             <button id="nav-servers" class="nav-button active">Servers</button>
+             <button id="nav-tools" class="nav-button">Tools</button>
+             <button id="logout-button">Logout</button>
+        </nav>
+    </header>
 
-    <div id="login-section">
-        <h2>Login</h2>
+    <main id="main-content">
+        <div id="login-section">
+            <h2>Login</h2>
         <form id="login-form">
             <div>
                 <label for="username">Username:</label>
@@ -23,21 +31,36 @@
             <button type="submit">Login</button>
             <p id="login-error" class="error-message"></p>
         </form>
-    </div>
-
-    <div id="config-section" style="display: none;">
-        <button id="logout-button">Logout</button>
-        <h2>Edit Configuration</h2>
-        <p>Edit the server configurations below. Click "Save Configuration" to apply changes.</p>
-        <div id="server-list">
-            <!-- Server entries will be loaded here -->
         </div>
-        <button id="add-server-button">Add New Server</button>
-        <hr>
-        <button id="save-config-button">Save Configuration</button>
-        <p id="save-status" class="status-message"></p>
-    </div>
 
-    <script src="script.js"></script>
+        <!-- Server Configuration Section -->
+        <div id="servers-section" class="admin-section" style="display: none;">
+            <h2>Server Configuration</h2>
+            <p>Edit the MCP server connections. Changes require a server restart to take effect.</p>
+            <div id="server-list">
+                <!-- Server entries will be loaded here -->
+            </div>
+            <button id="add-stdio-server-button" class="add-button">Add Stdio Server</button>
+            <button id="add-sse-server-button" class="add-button">Add SSE Server</button>
+            <hr>
+            <button id="save-config-button">Save Server Configuration</button>
+            <p id="save-status" class="status-message"></p>
+        </div>
+
+        <!-- Tool Configuration Section -->
+        <div id="tools-section" class="admin-section" style="display: none;">
+             <h2>Tool Configuration</h2>
+             <p>Enable or disable specific tools provided by the connected servers. Changes require a server restart to take effect.</p>
+             <div id="tool-list">
+                 <!-- Tool entries will be loaded here -->
+                 <p>Loading tools...</p>
+             </div>
+             <hr>
+             <button id="save-tool-config-button">Save Tool Configuration</button>
+             <p id="save-tool-status" class="status-message"></p>
+        </div>
+    </main>
+
+    <script src="script.js"></script> <!-- Single script file now -->
 </body>
 </html>

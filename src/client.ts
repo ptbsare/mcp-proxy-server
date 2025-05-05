@@ -1,8 +1,9 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { SSEClientTransport, SSEClientTransportOptions } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { TransportConfig, isSSEConfig, isStdioConfig } from './config.js';
+import { EventSource } from 'eventsource';
 
 const sleep = (time: number) => new Promise<void>(resolve => setTimeout(() => resolve(), time))
 export interface ConnectedClient {
@@ -16,7 +17,34 @@ const createClient = (name: string, transportConfig: TransportConfig): { client:
   let transport: Transport | null = null;
   try {
     if (isSSEConfig(transportConfig)) {
-      transport = new SSEClientTransport(new URL(transportConfig.url));
+      const transportOptions: SSEClientTransportOptions = {};
+      let customHeaders: Record<string, string> | undefined;
+
+      if (transportConfig.bearerToken) {
+        customHeaders = { 'Authorization': `Bearer ${transportConfig.bearerToken}` };
+        console.log(`  Using Bearer Token for SSE connection to ${name}`);
+      } else if (transportConfig.apiKey) {
+        customHeaders = { 'X-Api-Key': transportConfig.apiKey };
+         console.log(`  Using X-Api-Key for SSE connection to ${name}`);
+      }
+
+      if (customHeaders) {
+          const headersToAdd = customHeaders;
+          transportOptions.eventSourceInit = {
+              fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+                  const originalHeaders = new Headers(init?.headers || {});
+                  for (const key in headersToAdd) {
+                      originalHeaders.set(key, headersToAdd[key]);
+                  }
+                  return fetch(input, {
+                      ...init,
+                      headers: originalHeaders,
+                  });
+              },
+          } as any;
+      }
+
+      transport = new SSEClientTransport(new URL(transportConfig.url), transportOptions);
     } else if (isStdioConfig(transportConfig)) {
       const mergedEnv = {
         ...process.env,
