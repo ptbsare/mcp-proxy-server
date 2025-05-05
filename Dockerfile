@@ -51,16 +51,12 @@ RUN if [ -n "$PRE_INSTALLED_INIT_COMMAND" ]; then \
     else \
       echo "Skipping pre-defined init command."; \
     fi
-
-# Copy package.json and the npm lock file
+    
 COPY package.json package-lock.json* ./
-
-# Install project dependencies using npm ci for reproducibility
-RUN npm ci --prod=false
 
 COPY . .
 
-# Build the project using npm
+RUN npm install
 RUN npm run build
 
 VOLUME /mcp-proxy-server/config
