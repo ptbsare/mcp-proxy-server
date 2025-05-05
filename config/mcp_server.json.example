@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "server1-name": {
+      "command": "/path/to/server1/executable",
+      "args": ["--optional-arg"],
+      "env": {
+        "API_KEY": "your_api_key_here"
+      }
+    },
+    "server2-stdio": {
+      "command": "server2-command"
+    },
+    "server3-sse": {
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}
