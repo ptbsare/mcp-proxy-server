@@ -54,7 +54,7 @@ RUN if [ -n "$PRE_INSTALLED_INIT_COMMAND" ]; then \
     
 COPY package.json package-lock.json* ./
 
-COPY public ./public # Copy the admin UI files
+COPY public ./public
 COPY . .
 
 RUN npm install
