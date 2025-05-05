@@ -40,7 +40,7 @@ RUN if [ -n "$PRE_INSTALLED_PIP_PACKAGES" ]; then \
 
 RUN if [ -n "$PRE_INSTALLED_NPM_PACKAGES" ]; then \
       echo "Installing pre-defined NPM packages: $PRE_INSTALLED_NPM_PACKAGES" && \
-      pnpm add -g $PRE_INSTALLED_NPM_PACKAGES; \
+      npm install -g $PRE_INSTALLED_NPM_PACKAGES; \
     else \
       echo "Skipping pre-defined NPM packages installation."; \
     fi
@@ -52,13 +52,16 @@ RUN if [ -n "$PRE_INSTALLED_INIT_COMMAND" ]; then \
       echo "Skipping pre-defined init command."; \
     fi
 
-COPY package.json pnpm-lock.yaml* ./
+# Copy package.json and the npm lock file
+COPY package.json package-lock.json* ./
 
-RUN pnpm install --frozen-lockfile --prod=false
+# Install project dependencies using npm ci for reproducibility
+RUN npm ci --prod=false
 
 COPY . .
 
-RUN pnpm run build
+# Build the project using npm
+RUN npm run build
 
 VOLUME /mcp-proxy-server/config
 VOLUME /tools
