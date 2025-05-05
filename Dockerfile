@@ -73,7 +73,7 @@ ENV ENABLE_ADMIN_UI=false
 # Optional: Admin UI Credentials (required if ENABLE_ADMIN_UI=true)
 # It's recommended to set these via `docker run -e` instead of hardcoding here
 ENV ADMIN_USERNAME=admin
-ENV ADMIN_PASSWORD=password # WARNING: Change this default!
+ENV ADMIN_PASSWORD=password
 
 # --- Volumes ---
 VOLUME /mcp-proxy-server/config # For mcp_server.json and .session_secret
