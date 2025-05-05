@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write # Needed for checkout and release creation
+
+jobs:
+  check_version:
+    name: Check Version Change
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check_version.outputs.should_release }}
+      version: ${{ steps.get_package_version.outputs.version }} # Pass version to next job
+      tag_name: v${{ steps.get_package_version.outputs.version }} # Pass tag name to next job
+    # Only run if the commit message doesn't contain '[skip release]'
+    if: "!contains(github.event.head_commit.message, '[skip release]')"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Match the version used in other workflows
+
+      - name: Get version from package.json
+        id: get_package_version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Get latest release tag name
+        id: get_latest_tag
+        # Use gh cli to get the latest release tag. Handle errors if no releases exist.
+        run: |
+          latest_tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' || echo "")
+          echo "latest_tag=${latest_tag}" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if release should be created
+        id: check_version
+        run: |
+          current_tag="v${{ steps.get_package_version.outputs.version }}"
+          latest_tag="${{ steps.get_latest_tag.outputs.latest_tag }}"
+          if [ "$current_tag" != "$latest_tag" ]; then
+            echo "Version Changed ($latest_tag -> $current_tag). Need to Release."
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version $current_tag matches latest release tag $latest_tag. No Need to Release."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  create_release:
+    name: Create GitHub Release
+    needs: check_version
+    if: needs.check_version.outputs.should_release == 'true' # Only run if version changed
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Need write access to create release/tag
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed for changelog generator
+
+      - name: Generate Release Changelog
+        id: github_release_changelog # Changed id slightly for clarity
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          # Use 'prerelease' tag from previous job if needed, otherwise default based on version
+          # tag: ${{ needs.check_version.outputs.tag_name }} # Optional: Explicitly set tag if needed by action
+          # fromTag: ${{ needs.check_version.outputs.latest_tag }} # Optional: Explicitly set fromTag
+          configurationJson: |
+            {
+              "categories": [
+                { "title": "## Feature", "labels": ["feat", "feature"] },
+                { "title": "## Fix", "labels": ["fix", "bug"] },
+                { "title": "## Performance", "labels": ["perf"] },
+                { "title": "## Documentation", "labels": ["docs"] },
+                { "title": "## Chore", "labels": ["chore"] },
+                { "title": "## Refactor", "labels": ["refactor"] },
+                { "title": "## Revert", "labels": ["revert"] },
+                { "title": "## Style", "labels": ["style"] },
+                { "title": "## Test", "labels": ["test"] },
+                { "title": "## Other", "labels": [] }
+              ],
+              "label_extractor": [
+                {
+                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ])+([\\s\\S]*)",
+                  "on_property": "title",
+                  "target": "$1"
+                }
+              ]
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2 # Using softprops action
+        with:
+          tag_name: ${{ needs.check_version.outputs.tag_name }}
+          name: Release ${{ needs.check_version.outputs.tag_name }}
+          body: ${{ steps.github_release_changelog.outputs.changelog }} # Use generated changelog
+          # Optional: Mark as pre-release if version contains '-'
+          # prerelease: ${{ contains(needs.check_version.outputs.version, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
