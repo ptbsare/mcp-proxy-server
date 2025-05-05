@@ -1,5 +1,12 @@
 # MCP Proxy Server
 
+## ✨ Key Features Highlight
+
+*   **🌐 Web UI Management:** Easily manage all connected MCP servers through an intuitive web interface (optional, requires enabling).
+*   **🔧 Granular Tool Control:** Enable or disable individual tools provided by connected MCP servers via the Web UI.
+*   **🔒 Dual SSE Authentication:** Secure your SSE endpoint with flexible authentication options:
+    *   `Authorization: Bearer <token>`
+    *   `X-API-Key: <key>`
 An MCP proxy server that aggregates and serves multiple MCP resource servers through a single interface. This server acts as a central hub that can:
 
 - Connect to and manage multiple MCP resource servers
@@ -56,6 +63,10 @@ Example `config/mcp_server.json` structure:
 -   `args`: (Optional for stdio) An array of arguments to pass to the command.
 -   `env`: (Optional for stdio) An object of environment variables to set for the server process. These are merged with the proxy server's environment.
 -   `url`: (Required for SSE) The URL for the Server-Sent Events endpoint.
+-   `apiKey`: (Optional for SSE) An API key to send in the `X-Api-Key` header when connecting to this backend SSE server.
+-   `bearerToken`: (Optional for SSE) A token to send in the `Authorization: Bearer <token>` header when connecting to this backend SSE server. (If both `apiKey` and `bearerToken` are provided, `bearerToken` takes precedence).
+-   `installDirectory`: (Optional for stdio) The absolute path where the server should be installed. If omitted, it defaults to `/tools/<server_key>` inside the container/environment (used by the Admin UI install feature). Ensure the parent directory (e.g., `/tools`) is writable by the user running the proxy server if using the default.
+-   `installCommands`: (Optional for stdio) An array of shell commands to execute sequentially for installing the server if `installDirectory` (or the default `/tools/<server_key>`) does not exist (used by the Admin UI install feature). Commands are executed from the project root. **Use with extreme caution due to security risks.**
 
 The server reads `mcp_server.json` from the `config` subdirectory.
 

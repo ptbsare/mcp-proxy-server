@@ -1,11 +1,24 @@
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express, { Request, Response, NextFunction } from "express";
 import session from 'express-session';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, access, mkdir } from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
+import { exec as execCallback } from 'child_process';
+import { promisify } from 'util';
 import { createServer } from "./mcp-proxy.js";
 import http from 'http';
 import { fileURLToPath } from 'url';
+import { Tool, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { Config, loadConfig, isStdioConfig } from './config.js';
+
+const exec = promisify(execCallback);
+
+declare module 'express-session' {
+  interface SessionData {
+    user?: { username: string };
+  }
+}
 
 const app = express();
 app.use(express.json());
@@ -14,8 +27,11 @@ const expressServer = http.createServer(app);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CONFIG_PATH = path.resolve(__dirname, '..', 'config', 'mcp_server.json');
+const TOOL_CONFIG_PATH = path.resolve(__dirname, '..', 'config', 'tool_config.json');
+const SECRET_FILE_PATH = path.resolve(__dirname, '..', 'config', '.session_secret');
+const publicPath = path.join(__dirname, '..', 'public');
 
-const { server, cleanup } = await createServer();
+const { server, cleanup, connectedClients } = await createServer();
 
 const allowedKeysRaw = process.env.MCP_PROXY_SSE_ALLOWED_KEYS || "";
 const allowedKeys = new Set(allowedKeysRaw.split(',').map(k => k.trim()).filter(k => k.length > 0));
@@ -31,14 +47,46 @@ if (ADMIN_PASSWORD === 'password' || SESSION_SECRET === 'unsafe-default-secret')
 
 const enableAdminUI = process.env.ENABLE_ADMIN_UI === 'true';
 
-declare module 'express-session' {
-  interface SessionData {
-    user?: { username: string };
-  }
+async function getSessionSecret(): Promise<string> {
+    try {
+        await access(SECRET_FILE_PATH);
+        const secret = await readFile(SECRET_FILE_PATH, 'utf-8');
+        console.log("Read existing session secret from file.");
+        return secret.trim();
+    } catch (error: any) {
+        if (error.code === 'ENOENT') {
+            console.log("Session secret file not found. Generating a new one...");
+            const newSecret = crypto.randomBytes(32).toString('hex');
+            try {
+                await mkdir(path.dirname(SECRET_FILE_PATH), { recursive: true });
+                await writeFile(SECRET_FILE_PATH, newSecret, { encoding: 'utf-8', mode: 0o600 });
+                console.log(`New session secret generated and saved to ${SECRET_FILE_PATH}`);
+                return newSecret;
+            } catch (writeError) {
+                console.error("FATAL: Could not write new session secret file:", writeError);
+                process.exit(1);
+            }
+        } else {
+            console.error("FATAL: Error accessing session secret file:", error);
+            process.exit(1);
+        }
+    }
 }
 
-app.use(session({
-    secret: SESSION_SECRET,
+
+if (enableAdminUI) {
+    console.log("Admin UI is ENABLED.");
+    const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
+
+    if (ADMIN_PASSWORD === 'password') {
+        console.warn("WARNING: Using default admin password. Set ADMIN_USERNAME and ADMIN_PASSWORD environment variables for security.");
+    }
+
+    const sessionSecret = await getSessionSecret();
+
+    app.use(session({
+        secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 1000 * 60 * 60 * 24 }
@@ -116,6 +164,161 @@ app.post('/admin/config', isAuthenticated, async (req, res) => {
         res.status(500).json({ error: 'Failed to write configuration file.' });
     }
 });
+
+
+app.get('/admin/tools/list', isAuthenticated, async (req, res) => {
+    console.log("Admin request: GET /admin/tools/list");
+    const allDiscoveredTools: Tool[] = [];
+
+    for (const connectedClient of connectedClients) {
+        try {
+            const result = await connectedClient.client.request(
+                { method: 'tools/list', params: {} },
+                ListToolsResultSchema
+            );
+            if (result.tools && result.tools.length > 0) {
+                const toolsWithQualifiedNames = result.tools.map(tool => ({
+                    ...tool,
+                    name: `${connectedClient.name}/${tool.name}`
+                }));
+                allDiscoveredTools.push(...toolsWithQualifiedNames);
+            }
+        } catch (error: any) {
+             const isMethodNotFoundError = error?.name === 'McpError' && error?.code === -32601;
+             if (isMethodNotFoundError) {
+                 console.warn(`Admin tools/list: Method 'tools/list' not found on server ${connectedClient.name}.`);
+             } else {
+                 console.error(`Admin tools/list: Error fetching tools from ${connectedClient.name}:`, error?.message || error);
+             }
+        }
+    }
+    console.log(`Admin tools/list: Returning ${allDiscoveredTools.length} discovered tools.`);
+    res.json({ tools: allDiscoveredTools });
+});
+
+app.get('/admin/tools/config', isAuthenticated, async (req, res) => {
+    try {
+        console.log("Admin request: GET /admin/tools/config");
+        const toolConfigData = await readFile(TOOL_CONFIG_PATH, 'utf-8');
+        res.setHeader('Content-Type', 'application/json');
+        res.send(toolConfigData);
+    } catch (error: any) {
+        if (error.code === 'ENOENT') {
+             console.log(`Tool config file ${TOOL_CONFIG_PATH} not found, returning empty config.`);
+             res.json({ tools: {} });
+        } else {
+             console.error(`Error reading tool config file at ${TOOL_CONFIG_PATH}:`, error);
+             res.status(500).json({ error: 'Failed to read tool configuration file.' });
+        }
+    }
+});
+
+app.post('/admin/tools/config', isAuthenticated, async (req, res) => {
+    try {
+        console.log("Admin request: POST /admin/tools/config");
+        const newToolConfigData = req.body;
+
+        if (typeof newToolConfigData !== 'object' || newToolConfigData === null || typeof newToolConfigData.tools !== 'object') {
+            return res.status(400).json({ error: 'Invalid tool configuration format: Expected { "tools": { ... } }.' });
+        }
+
+        const configString = JSON.stringify(newToolConfigData, null, 2);
+        await writeFile(TOOL_CONFIG_PATH, configString, 'utf-8');
+        console.log(`Tool configuration file updated successfully by admin '${req.session.user?.username}'.`);
+        res.json({ success: true, message: "Configuration saved. Restart proxy server to apply changes." });
+    } catch (error) {
+        console.error(`Error writing tool config file at ${TOOL_CONFIG_PATH}:`, error);
+        res.status(500).json({ error: 'Failed to write tool configuration file.' });
+    }
+});
+
+
+app.post('/admin/server/install/:serverKey', isAuthenticated, async (req, res) => {
+    const serverKey = req.params.serverKey;
+    console.log(`Admin request: POST /admin/server/install/${serverKey}`);
+
+    console.warn(`SECURITY WARNING: Attempting to execute installation commands for server '${serverKey}'. This is inherently insecure.`);
+
+    try {
+        const config = await loadConfig();
+        const serverConfig = config.mcpServers[serverKey];
+
+        if (!serverConfig) {
+            return res.status(404).json({ error: `Server configuration not found for key: ${serverKey}` });
+        }
+
+        if (!isStdioConfig(serverConfig)) {
+             return res.status(400).json({ error: `Installation commands only supported for stdio servers. Server '${serverKey}' is not stdio.` });
+        }
+
+        const { installDirectory, installCommands } = serverConfig;
+
+        if (!installDirectory || !installCommands || !Array.isArray(installCommands) || installCommands.length === 0) {
+            return res.status(400).json({ error: `Server '${serverKey}' is missing 'installCommands' in its configuration (installDirectory is optional).` });
+        }
+
+        let absoluteInstallDir: string;
+        if (installDirectory) {
+             absoluteInstallDir = path.resolve(installDirectory);
+             console.log(`Using provided install directory: ${absoluteInstallDir}`);
+        } else {
+            absoluteInstallDir = path.resolve('/tools', serverKey);
+            console.log(`Using default install directory: ${absoluteInstallDir}`);
+        }
+
+
+        try {
+            await access(absoluteInstallDir);
+            console.log(`Installation directory '${absoluteInstallDir}' already exists. Skipping installation.`);
+            return res.status(409).json({ message: `Directory '${installDirectory}' already exists. Installation skipped.` });
+        } catch (error: any) {
+            if (error.code !== 'ENOENT') {
+                throw error;
+            }
+        }
+
+        console.log(`Directory does not exist. Proceeding with installation commands for '${serverKey}'...`);
+        for (const command of installCommands) {
+            console.log(`Executing command: ${command}`);
+            try {
+                const { stdout, stderr } = await exec(command, { cwd: process.cwd() });
+                if (stdout) console.log(`Command stdout:\n${stdout}`);
+                if (stderr) console.warn(`Command stderr:\n${stderr}`);
+            } catch (execError: any) {
+                console.error(`Failed to execute command "${command}":`, execError);
+                return res.status(500).json({
+                    error: `Installation failed during command: "${command}"`,
+                    details: execError.message,
+                    stderr: execError.stderr,
+                    stdout: execError.stdout
+                });
+            }
+        }
+
+        console.log(`Successfully executed all installation commands for server '${serverKey}'.`);
+        res.json({ success: true, message: `Installation commands for '${serverKey}' executed successfully.` });
+
+    } catch (error: any) {
+        console.error(`Error during server installation process for '${serverKey}':`, error);
+        res.status(500).json({ error: 'Failed to process server installation request.', details: error.message });
+    }
+});
+
+
+    console.log(`Serving static admin files from: ${publicPath}`);
+    app.use('/admin', express.static(publicPath));
+
+    app.get('/admin', (req, res) => {
+        res.redirect('/admin/index.html');
+    });
+    app.get('/admin/', (req, res) => {
+        res.redirect('/admin/index.html');
+    });
+
+} else {
+    console.log("Admin UI is DISABLED. Set ENABLE_ADMIN_UI=true to enable.");
+}
+
 
 const sseTransports = new Map<string, SSEServerTransport>();
 

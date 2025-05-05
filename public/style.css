@@ -1,22 +1,81 @@
 body {
-    font-family: sans-serif;
-    margin: 20px;
-    background-color: #f4f4f4;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    margin: 0;
+    background-color: #f8f9fa;
+    color: #212529;
+    line-height: 1.5;
 }
 
-h1, h2 {
-    color: #333;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 5px;
-}
-
-#login-section, #config-section {
-    background-color: #fff;
-    padding: 20px;
-    margin-bottom: 20px;
-    border-radius: 5px;
+header {
+    background-color: #343a40;
+    color: white;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
+
+header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    border-bottom: none; /* Remove border from header h1 */
+    padding-bottom: 0;
+}
+
+nav#main-nav button {
+    background: none;
+    border: none;
+    color: #adb5bd;
+    padding: 0.5rem 1rem;
+    margin-left: 0.5rem;
+    cursor: pointer;
+    font-size: 1rem;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+nav#main-nav button:hover {
+    color: white;
+    background-color: #495057;
+}
+
+nav#main-nav button.active {
+    color: white;
+    font-weight: bold;
+    background-color: #007bff; /* Highlight active nav button */
+}
+
+nav#main-nav button#logout-button {
+    background-color: #dc3545;
+    color: white;
+}
+nav#main-nav button#logout-button:hover {
+    background-color: #c82333;
+}
+
+
+main#main-content {
+    padding: 2rem;
+}
+
+/* Style for admin sections */
+.admin-section, #login-section {
+    background-color: #ffffff;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.07);
+}
+
+/* Adjust headings within sections */
+.admin-section h2, #login-section h2 {
+     margin-top: 0;
+     margin-bottom: 1.5rem;
+     padding-bottom: 0.5rem;
+     border-bottom: 1px solid #dee2e6;
+}
+
 
 label {
     display: block;
@@ -29,11 +88,19 @@ input[type="password"],
 input[type="url"],
 input[type="number"],
 textarea {
-    width: calc(100% - 22px); /* Adjust for padding/border */
-    padding: 8px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 3px;
+    width: 100%;
+    box-sizing: border-box; /* Include padding and border in element's total width/height */
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 1rem;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+input:focus, textarea:focus {
+    border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
 textarea {
@@ -41,27 +108,54 @@ textarea {
     resize: vertical;
 }
 
+/* General button styling */
 button {
-    background-color: #007bff;
-    color: white;
-    padding: 10px 15px;
-    border: none;
-    border-radius: 3px;
+    display: inline-block;
+    font-weight: 400;
+    color: #fff;
+    text-align: center;
+    vertical-align: middle;
     cursor: pointer;
-    margin-right: 5px;
-    margin-top: 5px;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    background-color: #007bff;
+    border: 1px solid #007bff;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    border-radius: 0.25rem;
+    transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    margin-right: 0.5rem;
+    margin-top: 0.5rem;
 }
 
 button:hover {
+    color: #fff;
     background-color: #0056b3;
+    border-color: #0056b3;
 }
 
-#logout-button {
-    background-color: #dc3545;
-    float: right;
+button:focus {
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(38, 143, 255, 0.5);
 }
-#logout-button:hover {
-    background-color: #c82333;
+
+button:disabled {
+    background-color: #6c757d;
+    border-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+/* Specific button overrides if needed */
+#add-server-button {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+#add-server-button:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
 }
 
 .error-message {
@@ -76,39 +170,72 @@ button:hover {
     margin-top: 10px;
 }
 
-.server-entry {
-    border: 1px solid #ddd;
-    padding: 15px;
-    margin-bottom: 15px;
-    border-radius: 4px;
-    background-color: #f9f9f9;
+/* Server/Tool Entry Styling */
+.server-entry, .tool-entry {
+    border: 1px solid #e9ecef;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-radius: 6px;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
-.server-entry h3 {
+.server-entry h3, .server-group h3 {
     margin-top: 0;
     color: #555;
 }
 
-.server-entry label {
-    font-weight: normal;
-    color: #666;
-    margin-bottom: 3px;
+.server-entry label, .tool-entry label {
+    font-weight: 500; /* Slightly bolder labels */
+    color: #495057;
+    margin-bottom: 0.25rem;
+    display: block; /* Ensure labels take full width */
 }
 
-.server-entry input[type="checkbox"] {
-    margin-right: 5px;
+.server-entry input[type="checkbox"], .tool-entry input[type="checkbox"] {
+    margin-right: 0.5rem;
     vertical-align: middle;
+    width: auto; /* Override full width for checkboxes */
+    margin-bottom: 0; /* Override margin */
+}
+.tool-entry label { /* Make tool label clickable for checkbox */
+    display: inline-flex; /* Align checkbox and text */
+    align-items: center;
+    font-weight: normal; /* Normal weight for tool label */
+    width: 100%;
+}
+.tool-entry label strong {
+    margin-right: 0.5rem;
 }
 
-.server-entry .delete-button {
+
+.server-entry .delete-button, .server-entry .install-button {
     background-color: #ffc107;
-    color: #333;
+    border-color: #ffc107;
+    color: #212529;
     float: right;
-    padding: 5px 10px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
 }
 .server-entry .delete-button:hover {
     background-color: #e0a800;
+    border-color: #d39e00;
 }
+.server-entry .install-button {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+    color: white;
+    float: none; /* Don't float install button */
+}
+.server-entry .install-button:hover {
+     background-color: #138496;
+    border-color: #117a8b;
+}
+.server-entry .install-button:disabled {
+     background-color: #6c757d;
+    border-color: #6c757d;
+}
+
 
 hr {
     margin: 20px 0;
