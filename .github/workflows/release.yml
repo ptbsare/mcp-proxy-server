@@ -73,6 +73,9 @@ jobs:
         uses: mikepenz/release-changelog-builder-action@v5
         with:
           mode: "HYBRID"
+          # Explicitly define the range: from the last release tag to the current commit SHA
+          fromTag: ${{ steps.get_latest_tag.outputs.latest_tag }}
+          toTag: ${{ github.sha }}
           configurationJson: |
             {
               "categories": [
@@ -133,7 +136,7 @@ jobs:
         with:
           tag_name: ${{ needs.check_version.outputs.tag_name }}
           name: Release ${{ needs.check_version.outputs.tag_name }}
-          body: ${{ steps.github_release_changelog.outputs.changelog }} # Use generated changelog
+          body: ${{ steps.github_release.outputs.changelog }} # Use generated changelog from the correct step ID
           # Optional: Mark as pre-release if version contains '-'
           # prerelease: ${{ contains(needs.check_version.outputs.version, '-') }}
         env:
