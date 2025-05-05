@@ -180,16 +180,56 @@ button:disabled {
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
-.server-entry h3, .server-group h3 {
-    margin-top: 0;
-    color: #555;
+.server-entry .server-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem; /* Add some space before details */
 }
+
+.server-entry .server-header h3 {
+    margin: 0; /* Remove default margin */
+    color: #007bff; /* Make header stand out */
+    cursor: pointer;
+    flex-grow: 1; /* Allow title to take available space */
+    padding-right: 1rem; /* Space before delete button */
+}
+.server-entry .server-header h3:hover {
+    text-decoration: underline;
+}
+
+.server-entry .server-details {
+    /* Styles for the container of the details */
+    padding-left: 1rem; /* Indent details slightly */
+    border-left: 2px solid #e9ecef;
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out; /* Smooth transition */
+    overflow: hidden; /* Needed for max-height transition */
+    max-height: 2000px; /* Set a large max-height for expanded state */
+    opacity: 1;
+}
+
+.server-entry.collapsed .server-details {
+    max-height: 0; /* Collapse smoothly */
+    opacity: 0;
+    padding-left: 1rem; /* Keep padding during collapse */
+    border-left: 2px solid #e9ecef; /* Keep border during collapse */
+    margin-top: 0; /* Remove margin when collapsed */
+    overflow: hidden;
+}
+
 
 .server-entry label, .tool-entry label {
     font-weight: 500; /* Slightly bolder labels */
     color: #495057;
     margin-bottom: 0.25rem;
     display: block; /* Ensure labels take full width */
+}
+/* Specific style for inline checkbox labels */
+.server-entry label.inline-label {
+    display: inline-flex;
+    align-items: center;
+    width: auto; /* Don't take full width */
+    margin-bottom: 1rem; /* Add back bottom margin */
 }
 
 .server-entry input[type="checkbox"], .tool-entry input[type="checkbox"] {
@@ -213,9 +253,11 @@ button:disabled {
     background-color: #ffc107;
     border-color: #ffc107;
     color: #212529;
-    float: right;
+    /* float: right; REMOVED - Handled by flexbox in header */
     padding: 0.25rem 0.75rem;
     font-size: 0.875rem;
+    margin: 0; /* Remove default button margins */
+    flex-shrink: 0; /* Prevent button from shrinking */
 }
 .server-entry .delete-button:hover {
     background-color: #e0a800;
@@ -225,7 +267,8 @@ button:disabled {
     background-color: #17a2b8;
     border-color: #17a2b8;
     color: white;
-    float: none; /* Don't float install button */
+    /* float: none; REMOVED */
+    margin-top: 0.5rem; /* Add margin back for install button */
 }
 .server-entry .install-button:hover {
      background-color: #138496;
@@ -234,6 +277,22 @@ button:disabled {
 .server-entry .install-button:disabled {
      background-color: #6c757d;
     border-color: #6c757d;
+}
+
+
+/* Restart Button Styling */
+.restart-button {
+    background-color: #fd7e14; /* Orange */
+    border-color: #fd7e14;
+    color: white;
+}
+.restart-button:hover {
+    background-color: #e67312;
+    border-color: #d96c10;
+}
+.restart-button:disabled {
+    background-color: #ffc99c; /* Lighter orange when disabled */
+    border-color: #ffc99c;
 }
 
 

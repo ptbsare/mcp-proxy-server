@@ -171,24 +171,37 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const renderServerEntry = (key, serverConf) => {
+    const renderServerEntry = (key, serverConf, startExpanded = false) => {
         const entryDiv = document.createElement('div');
         entryDiv.classList.add('server-entry');
+        if (!startExpanded) {
+            entryDiv.classList.add('collapsed');
+        }
         entryDiv.dataset.serverKey = key;
 
         // Determine type based on presence of 'url' or 'command'
         const isSSE = serverConf && typeof serverConf.url === 'string';
         const isStdio = serverConf && typeof serverConf.command === 'string';
-        const type = isSSE ? 'SSE' : (isStdio ? 'Stdio' : 'Unknown'); // Handle potential incomplete data
+        const type = isSSE ? 'SSE' : (isStdio ? 'Stdio' : 'Unknown');
 
-        // Basic server info (common to both)
-        let serverHtml = `
+        // Header part (always visible)
+        const headerDiv = document.createElement('div');
+        headerDiv.classList.add('server-header');
+        headerDiv.innerHTML = `
             <h3>${serverConf.name || key} (<span class="server-type">${type}</span>)</h3>
             <button class="delete-button">Delete</button>
+        `;
+        entryDiv.appendChild(headerDiv);
+
+        // Details part (collapsible)
+        const detailsDiv = document.createElement('div');
+        detailsDiv.classList.add('server-details');
+
+        let detailsHtml = `
             <div><label>Server Key (Unique ID):</label><input type="text" class="server-key-input" value="${key}" required></div>
             <div><label>Display Name:</label><input type="text" class="server-name-input" value="${serverConf.name || ''}"></div>
             <div>
-                <label>
+                <label class="inline-label">
                     <input type="checkbox" class="server-active-input" ${serverConf.active !== false ? 'checked' : ''}>
                     Active
                 </label>
@@ -197,57 +210,108 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Type-specific fields
         if (isSSE) {
-            serverHtml += `
+            detailsHtml += `
                 <div><label>URL:</label><input type="url" class="server-url-input" value="${serverConf.url || ''}" required></div>
                 <div><label>API Key (X-Api-Key Header):</label><input type="text" class="server-apikey-input" value="${serverConf.apiKey || ''}"></div>
                 <div><label>Bearer Token (Authorization Header):</label><input type="text" class="server-bearertoken-input" value="${serverConf.bearerToken || ''}"></div>
             `;
         } else if (isStdio) {
-            serverHtml += `
+            // Default install dir based on key if not provided
+            const defaultInstallDir = `/tools/${key}`;
+            const installDirValue = serverConf.installDirectory !== undefined ? serverConf.installDirectory : defaultInstallDir;
+            detailsHtml += `
                 <div><label>Command:</label><input type="text" class="server-command-input" value="${serverConf.command || ''}" required></div>
                 <div><label>Arguments (comma-separated):</label><input type="text" class="server-args-input" value="${(serverConf.args || []).join(', ')}"></div>
                 <div><label>Environment Variables (JSON format):</label><textarea class="server-env-input">${JSON.stringify(serverConf.env || {}, null, 2)}</textarea></div>
                 <hr style="margin: 10px 0;">
-                <div><label>Install Directory (optional, relative path):</label><input type="text" class="server-install-dir-input" value="${serverConf.installDirectory || ''}"></div>
+                <div><label>Install Directory (optional, relative path):</label><input type="text" class="server-install-dir-input" value="${installDirValue}"></div>
                 <div><label>Install Commands (optional, one per line):</label><textarea class="server-install-cmds-input">${(serverConf.installCommands || []).join('\n')}</textarea></div>
-                <button class="install-button" ${!serverConf.installDirectory || !(serverConf.installCommands || []).length ? 'disabled title="Install directory and commands must be set"' : ''}>Check/Run Install</button>
+                <button class="install-button" ${!installDirValue || !(serverConf.installCommands || []).length ? 'disabled title="Install directory must be set to enable install button (commands optional)"' : ''}>Check/Run Install</button>
                 <span class="install-status" style="margin-left: 10px; font-style: italic;"></span>
             `;
         } else {
-             serverHtml += `<p class="error-message">Warning: Unknown server type configuration.</p>`;
+             detailsHtml += `<p class="error-message">Warning: Unknown server type configuration.</p>`;
         }
 
-        entryDiv.innerHTML = serverHtml;
+        detailsDiv.innerHTML = detailsHtml;
+        entryDiv.appendChild(detailsDiv);
 
-        // Add event listeners
-        entryDiv.querySelector('.delete-button').addEventListener('click', () => {
+        // --- Event Listeners ---
+
+        // Toggle collapse/expand
+        headerDiv.querySelector('h3').addEventListener('click', () => {
+            entryDiv.classList.toggle('collapsed');
+        });
+        headerDiv.querySelector('h3').style.cursor = 'pointer'; // Indicate clickable header
+
+        // Delete button
+        headerDiv.querySelector('.delete-button').addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent toggle when clicking delete
             if (confirm(`Are you sure you want to delete server "${serverConf.name || key}"?`)) {
                 entryDiv.remove();
             }
         });
-        const installButton = entryDiv.querySelector('.install-button');
+
+        // Install button (if exists)
+        const installButton = detailsDiv.querySelector('.install-button');
         if (installButton) {
             installButton.addEventListener('click', () => handleInstallClick(key, entryDiv));
+            // Enable/disable install button based on install dir presence
+            const installDirInput = detailsDiv.querySelector('.server-install-dir-input');
+            if (installDirInput) {
+                 installDirInput.addEventListener('input', () => {
+                     installButton.disabled = !installDirInput.value.trim();
+                     installButton.title = installButton.disabled ? 'Install directory must be set to enable install button (commands optional)' : '';
+                 });
+            }
+        }
+
+        // Server Key -> Install Directory Sync (for Stdio)
+        const keyInput = detailsDiv.querySelector('.server-key-input');
+        const installDirInput = detailsDiv.querySelector('.server-install-dir-input');
+        if (keyInput && installDirInput) { // Only if both exist (Stdio)
+            keyInput.addEventListener('input', () => {
+                const currentKey = keyInput.value.trim();
+                const currentInstallDir = installDirInput.value.trim();
+                const oldDefaultPattern = /^\/tools\/.*$/; // Matches /tools/<anything>
+
+                // Update only if install dir is empty or matches the default pattern
+                if (currentKey && (!currentInstallDir || oldDefaultPattern.test(currentInstallDir))) {
+                    const newDefaultInstallDir = `/tools/${currentKey}`;
+                    installDirInput.value = newDefaultInstallDir;
+                    // Also update install button state if needed
+                    if (installButton) {
+                         installButton.disabled = !newDefaultInstallDir;
+                         installButton.title = installButton.disabled ? 'Install directory must be set to enable install button (commands optional)' : '';
+                    }
+                }
+            });
         }
 
         serverListDiv.appendChild(entryDiv);
     };
 
-    // Remove single add button listener
-    // addServerButton.addEventListener('click', () => { ... });
 
-    // Add listeners for new buttons (assuming they exist in HTML now)
+    // Add listeners for new buttons
     document.getElementById('add-stdio-server-button')?.addEventListener('click', () => {
          const newKey = `new_stdio_server_${Date.now()}`;
-         const newServerConf = { name: "New Stdio Server", active: true, command: "your_command_here", args: [], env: {} };
-         renderServerEntry(newKey, newServerConf);
-         serverListDiv.lastChild?.scrollIntoView();
+         // Pre-fill installDirectory based on the new key
+         const newServerConf = {
+             name: "New Stdio Server",
+             active: true,
+             command: "your_command_here",
+             args: [],
+             env: {},
+             installDirectory: `/tools/${newKey}` // Set default install dir
+         };
+         renderServerEntry(newKey, newServerConf, true); // Pass true to start expanded
+         serverListDiv.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
      document.getElementById('add-sse-server-button')?.addEventListener('click', () => {
          const newKey = `new_sse_server_${Date.now()}`;
          const newServerConf = { name: "New SSE Server", active: true, url: "http://localhost:8080/sse" };
-         renderServerEntry(newKey, newServerConf);
-         serverListDiv.lastChild?.scrollIntoView();
+         renderServerEntry(newKey, newServerConf, true); // Pass true to start expanded
+         serverListDiv.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
 
 
@@ -468,6 +532,37 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => { saveToolStatus.textContent = ''; saveToolStatus.style.color = 'green'; }, 7000);
         }
     });
+
+    // --- Restart Server ---
+    const handleRestartClick = async (button) => {
+        if (!confirm('Are you sure you want to restart the server? This will disconnect all clients and apply saved configuration changes.')) {
+            return;
+        }
+        button.disabled = true;
+        button.textContent = 'Restarting...';
+        try {
+            const response = await fetch('/admin/server/restart', { method: 'POST' });
+            const result = await response.json();
+            if (response.status === 202 && result.success) {
+                alert('Server restart initiated. The page might become unresponsive as the server shuts down.');
+                // Optionally, redirect or disable UI further
+                // For now, just leave the button disabled
+            } else {
+                alert(`Failed to initiate restart: ${result.error || response.statusText}`);
+                button.disabled = false;
+                button.textContent = 'Restart Server to Apply';
+            }
+        } catch (error) {
+            console.error("Restart error:", error);
+            alert(`An error occurred while trying to restart the server: ${error.message}`);
+            button.disabled = false;
+            button.textContent = 'Restart Server to Apply';
+        }
+    };
+
+    document.getElementById('restart-server-button-servers')?.addEventListener('click', (e) => handleRestartClick(e.target));
+    document.getElementById('restart-server-button-tools')?.addEventListener('click', (e) => handleRestartClick(e.target));
+
 
     // --- Initial Load ---
     checkLoginStatus(); // Check login and load initial data if successful

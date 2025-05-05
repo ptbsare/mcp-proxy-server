@@ -231,6 +231,18 @@ app.post('/admin/tools/config', isAuthenticated, async (req, res) => {
         res.status(500).json({ error: 'Failed to write tool configuration file.' });
     }
 });
+app.post('/admin/server/restart', isAuthenticated, async (req, res) => {
+    console.log(`Admin request: POST /admin/server/restart by user '${req.session.user?.username}'`);
+    // Respond quickly to the client before shutting down
+    res.status(202).json({ success: true, message: 'Server restart initiated.' });
+
+    // Initiate graceful shutdown after a short delay to ensure response is sent
+    setTimeout(() => {
+        console.log("Initiating shutdown via admin request...");
+        // Assuming 'shutdown' function handles the graceful exit
+        shutdown('SIGTERM'); // Or SIGINT, depending on preference
+    }, 500); // 500ms delay
+});
 
 
 app.post('/admin/server/install/:serverKey', isAuthenticated, async (req, res) => {
@@ -253,10 +265,6 @@ app.post('/admin/server/install/:serverKey', isAuthenticated, async (req, res) =
 
         const { installDirectory, installCommands } = serverConfig;
 
-        if (!installDirectory || !installCommands || !Array.isArray(installCommands) || installCommands.length === 0) {
-            return res.status(400).json({ error: `Server '${serverKey}' is missing 'installCommands' in its configuration (installDirectory is optional).` });
-        }
-
         let absoluteInstallDir: string;
         if (installDirectory) {
              absoluteInstallDir = path.resolve(installDirectory);
@@ -266,37 +274,64 @@ app.post('/admin/server/install/:serverKey', isAuthenticated, async (req, res) =
             console.log(`Using default install directory: ${absoluteInstallDir}`);
         }
 
-
+        // 1. Check if directory already exists
         try {
             await access(absoluteInstallDir);
-            console.log(`Installation directory '${absoluteInstallDir}' already exists. Skipping installation.`);
-            return res.status(409).json({ message: `Directory '${installDirectory}' already exists. Installation skipped.` });
+            console.log(`Installation directory '${absoluteInstallDir}' already exists. Installation not needed.`);
+            // Return a specific message indicating it already exists, maybe 200 OK or 409 Conflict? Let's use 200 for simplicity in UI.
+            return res.json({ success: true, message: `Directory '${absoluteInstallDir}' already exists. Installation skipped.` });
         } catch (error: any) {
             if (error.code !== 'ENOENT') {
+                // Rethrow unexpected errors during access check
                 throw error;
             }
+            // ENOENT is expected, means directory doesn't exist, proceed.
+            console.log(`Directory '${absoluteInstallDir}' does not exist. Proceeding...`);
         }
 
-        console.log(`Directory does not exist. Proceeding with installation commands for '${serverKey}'...`);
-        for (const command of installCommands) {
-            console.log(`Executing command: ${command}`);
-            try {
-                const { stdout, stderr } = await exec(command, { cwd: process.cwd() });
-                if (stdout) console.log(`Command stdout:\n${stdout}`);
-                if (stderr) console.warn(`Command stderr:\n${stderr}`);
-            } catch (execError: any) {
-                console.error(`Failed to execute command "${command}":`, execError);
-                return res.status(500).json({
-                    error: `Installation failed during command: "${command}"`,
-                    details: execError.message,
-                    stderr: execError.stderr,
-                    stdout: execError.stdout
-                });
+        // 2. Execute install commands if they exist
+        const commandsToRun = installCommands && Array.isArray(installCommands) ? installCommands : [];
+        if (commandsToRun.length > 0) {
+            console.log(`Proceeding with ${commandsToRun.length} installation command(s) for '${serverKey}'...`);
+            for (const command of commandsToRun) {
+                console.log(`Executing command: ${command}`);
+                try {
+                    const { stdout, stderr } = await exec(command, { cwd: process.cwd() }); // Execute from project root
+                    if (stdout) console.log(`Command stdout:\n${stdout}`);
+                    if (stderr) console.warn(`Command stderr:\n${stderr}`);
+                } catch (execError: any) {
+                    console.error(`Failed to execute command "${command}":`, execError);
+                    return res.status(500).json({
+                        error: `Installation failed during command: "${command}"`,
+                        details: execError.message,
+                        stderr: execError.stderr,
+                        stdout: execError.stdout
+                    });
+                }
             }
+            console.log(`Successfully executed all installation commands for server '${serverKey}'.`);
+        } else {
+            console.log(`No installation commands provided for '${serverKey}'. Skipping command execution.`);
         }
 
-        console.log(`Successfully executed all installation commands for server '${serverKey}'.`);
-        res.json({ success: true, message: `Installation commands for '${serverKey}' executed successfully.` });
+        // 3. Create the installation directory to mark as installed
+        try {
+            console.log(`Creating installation directory: ${absoluteInstallDir}`);
+            await mkdir(absoluteInstallDir, { recursive: true });
+            console.log(`Successfully created directory ${absoluteInstallDir}.`);
+        } catch (mkdirError: any) {
+            console.error(`Failed to create installation directory "${absoluteInstallDir}":`, mkdirError);
+            return res.status(500).json({
+                error: `Failed to create installation directory after command execution (if any).`,
+                details: mkdirError.message
+            });
+        }
+
+        // 4. Return success
+        const message = commandsToRun.length > 0
+            ? `Installation commands executed and directory '${absoluteInstallDir}' created successfully.`
+            : `Directory '${absoluteInstallDir}' created successfully (no commands to run).`;
+        res.json({ success: true, message: message });
 
     } catch (error: any) {
         console.error(`Error during server installation process for '${serverKey}':`, error);
