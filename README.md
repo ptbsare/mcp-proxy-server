@@ -115,7 +115,7 @@ docker run -d \
   -p 3663:3663 \
   -v ./path/to/your/config:/mcp-proxy-server/config \
   -v ./path/to/your/tools:/tools \
-  --name mcp-proxy \
+  --name mcp-proxy-server \
   mcp-proxy-server
 ```
 
@@ -133,7 +133,7 @@ On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
 ```json
 {
   "mcpServers": {
-    "mcp-proxy": {
+    "mcp-proxy-server": {
       "command": "/path/to/mcp-proxy-server/build/index.js",
       "env": {}
     }
