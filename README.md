@@ -59,6 +59,14 @@ Example `config/mcp_server.json` structure:
 
 The server reads `mcp_server.json` from the `config` subdirectory.
 
+### SSE Server Port
+
+The port on which the SSE server listens can be configured using the `PORT` environment variable. If this variable is not set, the server defaults to port `3663`.
+
+Example:
+```bash
+export PORT=8080
+```
 ### SSE Authentication (Optional)
 
 To secure the `/sse` endpoint, you can configure API key authentication using the `MCP_PROXY_SSE_ALLOWED_KEYS` environment variable.
