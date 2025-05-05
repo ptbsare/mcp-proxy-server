@@ -76,11 +76,13 @@ ENV ADMIN_USERNAME=admin
 ENV ADMIN_PASSWORD=password
 
 # --- Volumes ---
-VOLUME /mcp-proxy-server/config # For mcp_server.json and .session_secret
-VOLUME /tools # For external tools referenced in config
+  # For mcp_server.json and .session_secret
+VOLUME /mcp-proxy-server/config
+  # For external tools referenced in config
+VOLUME /tools
 
 # --- Expose Port ---
-EXPOSE 3663 # Default port, adjust if PORT env var is different
+EXPOSE 3663
 
 # --- Entrypoint & Command ---
 ENTRYPOINT ["tini", "--"]

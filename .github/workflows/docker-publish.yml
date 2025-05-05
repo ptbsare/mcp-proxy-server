@@ -3,13 +3,14 @@ name: Build and Publish Docker Image to GHCR
 
 on:
   push:
-    tags:
-      - 'v*.*.*' # Trigger on version tags like v1.0.0, v2.3.4 etc.
+    branches:
+      - main # Trigger on push to main branch
   workflow_dispatch: # Allows manual triggering
 
 permissions:
   contents: read # Needed to check out code and read package.json
   packages: write # Needed to push Docker image to GHCR
+  releases: read # Needed to read latest release tag
 
 jobs:
   build-and-publish:
@@ -29,7 +30,48 @@ jobs:
         id: get_version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
+      - name: Compare package version with latest release tag
+        id: compare_versions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const packageVersion = "${{ steps.get_version.outputs.version }}";
+            console.log(`Package version: ${packageVersion}`);
+
+            try {
+              const latestRelease = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+
+              const latestTag = latestRelease.data.tag_name;
+              console.log(`Latest release tag: ${latestTag}`);
+
+              // Assuming tag is like 'v1.2.3', remove 'v' prefix
+              const latestVersion = latestTag.startsWith('v') ? latestTag.substring(1) : latestTag;
+              console.log(`Latest release version: ${latestVersion}`);
+
+              if (packageVersion !== latestVersion) {
+                console.log('Version mismatch. Build needed.');
+                core.setOutput('needs_build', 'true');
+              } else {
+                console.log('Versions match. No build needed.');
+                core.setOutput('needs_build', 'false');
+              }
+            } catch (error) {
+              // Handle case where no releases exist yet or API error
+              if (error.status === 404) {
+                console.log('No releases found. Build needed.');
+                core.setOutput('needs_build', 'true');
+              } else {
+                console.error('Error fetching latest release:', error);
+                core.setFailed(`Error fetching latest release: ${error.message}`);
+                core.setOutput('needs_build', 'false'); // Don't build on error
+              }
+            }
+
       - name: Log in to GitHub Container Registry
+        if: steps.compare_versions.outputs.needs_build == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -37,9 +79,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
+        if: steps.compare_versions.outputs.needs_build == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
+        if: steps.compare_versions.outputs.needs_build == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
