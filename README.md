@@ -106,9 +106,9 @@ A `Dockerfile` is provided to build a container image for the proxy server.
 docker build -t mcp-proxy-server .
 ```
 
-**Running the Container:**
+**Running the Container (Building Locally):**
 
-You need to mount volumes for the configuration and any external tools:
+If you built the image locally, you need to mount volumes for the configuration and any external tools:
 
 ```bash
 docker run -d \
@@ -122,6 +122,33 @@ docker run -d \
 - Replace `./path/to/your/config` with the path to a directory on your host machine containing your `mcp_server.json` file. The container expects the file at `/mcp-proxy-server/config/mcp_server.json`.
 - Replace `./path/to/your/tools` with the path to a directory containing executables or scripts for any external MCP servers you reference in your config using absolute paths like `/tools/my-server/run.sh`.
 - You can pass environment variables like `MCP_PROXY_SSE_ALLOWED_KEYS` using the `-e` flag (e.g., `-e MCP_PROXY_SSE_ALLOWED_KEYS="key1,key2"`).
+
+**Using the Pre-built Image (from GHCR):**
+
+Alternatively, you can pull the pre-built image directly from the GitHub Container Registry:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
+
+# Or pull a specific version (e.g., v0.1.0)
+# docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:v0.1.0
+```
+
+Then, run the container using the pulled image name:
+
+```bash
+docker run -d \
+  -p 3663:3663 \
+  -v ./path/to/your/config:/mcp-proxy-server/config \
+  -v ./path/to/your/tools:/tools \
+  --name mcp-proxy-server \
+  ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
+```
+
+- Remember to replace `./path/to/your/config` and `./path/to/your/tools` with your actual host paths.
+- Adjust the tag (`:latest`) if you pulled a specific version.
+- Pass environment variables using the `-e` flag as needed.
 
 ## Installation
 
