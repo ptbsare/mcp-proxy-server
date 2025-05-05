@@ -1,0 +1,9 @@
+node_modules/
+build/
+*.log
+.env*
+*.db
+mcp_server.json
+index.md
+SETTINGS.md
+reverse-transform.js
