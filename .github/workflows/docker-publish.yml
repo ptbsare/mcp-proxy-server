@@ -3,8 +3,8 @@ name: Build and Publish Docker Image to GHCR
 
 on:
   push:
-    branches:
-      - main # Or your default branch name (e.g., master)
+    tags:
+      - 'v*.*.*' # Trigger on version tags like v1.0.0, v2.3.4 etc.
   workflow_dispatch: # Allows manual triggering
 
 permissions:

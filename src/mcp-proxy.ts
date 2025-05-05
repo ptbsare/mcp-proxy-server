@@ -18,7 +18,7 @@ import {
   GetPromptResultSchema
 } from "@modelcontextprotocol/sdk/types.js";
 import { createClients, ConnectedClient } from './client.js';
-import { Config, loadConfig } from './config.js';
+import { Config, loadConfig, TransportConfig, isSSEConfig, isStdioConfig } from './config.js';
 import { z } from 'zod';
 import * as eventsource from 'eventsource';
 
@@ -26,8 +26,24 @@ global.EventSource = eventsource.EventSource
 
 export const createServer = async () => {
   const config = await loadConfig();
-  const connectedClients = await createClients(config.mcpServers);
-  console.log(`Connected to ${connectedClients.length} servers`);
+
+  const activeServersConfig: Record<string, TransportConfig> = {};
+  for (const serverKey in config.mcpServers) {
+    if (Object.prototype.hasOwnProperty.call(config.mcpServers, serverKey)) {
+      const serverConfig = config.mcpServers[serverKey];
+      const isActive = !(serverConfig.active === false || String(serverConfig.active).toLowerCase() === 'false');
+
+      if (isActive) {
+        activeServersConfig[serverKey] = serverConfig;
+      } else {
+        const serverName = serverConfig.name || (isSSEConfig(serverConfig) ? serverConfig.url : isStdioConfig(serverConfig) ? serverConfig.command : serverKey);
+        console.log(`Skipping inactive server: ${serverName}`);
+      }
+    }
+  }
+
+  const connectedClients = await createClients(activeServersConfig);
+  console.log(`Attempted connection to ${Object.keys(activeServersConfig).length} active servers. Successfully connected to ${connectedClients.length}.`);
 
   const toolToClientMap = new Map<string, ConnectedClient>();
   const resourceToClientMap = new Map<string, ConnectedClient>();
@@ -231,15 +247,12 @@ export const createServer = async () => {
           });
           allResources.push(...resourcesWithSource);
         }
-      } catch (error: any) { // Add type annotation
+      } catch (error: any) {
         const isMethodNotFoundError = error?.name === 'McpError' && error?.code === -32601;
 
         if (isMethodNotFoundError) {
-          // Log a warning for "Method not found"
           console.warn(`Warning: Method 'resources/list' not found on server ${connectedClient.name}. Proceeding without resources from this source.`);
-          // Allow loop to continue
         } else {
-          // Log other errors as critical errors
           console.error(`Error fetching resources from ${connectedClient.name}:`, error?.message || error);
         }
       }

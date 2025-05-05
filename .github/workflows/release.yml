@@ -68,26 +68,54 @@ jobs:
         with:
           fetch-depth: 0 # Needed for changelog generator
 
-      - name: Generate Release Changelog
-        id: github_release_changelog # Changed id slightly for clarity
+      - name: Generate Release note body.
+        id: github_release
         uses: mikepenz/release-changelog-builder-action@v5
         with:
-          # Use 'prerelease' tag from previous job if needed, otherwise default based on version
-          # tag: ${{ needs.check_version.outputs.tag_name }} # Optional: Explicitly set tag if needed by action
-          # fromTag: ${{ needs.check_version.outputs.latest_tag }} # Optional: Explicitly set fromTag
+          mode: "HYBRID"
           configurationJson: |
             {
               "categories": [
-                { "title": "## Feature", "labels": ["feat", "feature"] },
-                { "title": "## Fix", "labels": ["fix", "bug"] },
-                { "title": "## Performance", "labels": ["perf"] },
-                { "title": "## Documentation", "labels": ["docs"] },
-                { "title": "## Chore", "labels": ["chore"] },
-                { "title": "## Refactor", "labels": ["refactor"] },
-                { "title": "## Revert", "labels": ["revert"] },
-                { "title": "## Style", "labels": ["style"] },
-                { "title": "## Test", "labels": ["test"] },
-                { "title": "## Other", "labels": [] }
+                {
+                    "title": "## Feature",
+                    "labels": ["feat", "feature"]
+                },
+                {
+                    "title": "## Fix",
+                    "labels": ["fix", "bug"]
+                },
+                {
+                    "title": "## Performance",
+                    "labels": ["perf"]
+                },
+                {
+                    "title": "## Documentation",
+                    "labels": ["docs"]
+                },
+                {
+                    "title": "## Chore",
+                    "labels": ["chore"]
+                },
+                {
+                    "title": "## Refactor",
+                    "labels": ["refactor"]
+                },
+                {
+                    "title": "## Revert",
+                    "labels": ["revert"]
+                },
+                {
+                    "title": "## Style",
+                    "labels": ["style"]
+                },
+                {
+                    "title": "## Test",
+                    "labels": ["test"]
+                },
+                {
+                    "title": "## Other",
+                    "labels": []
+                }
               ],
               "label_extractor": [
                 {
