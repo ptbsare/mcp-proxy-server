@@ -68,6 +68,14 @@ main#main-content {
     box-shadow: 0 0 15px rgba(0, 0, 0, 0.07);
 }
 
+/* Limit width and center login section on larger screens */
+#login-section {
+    max-width: 450px; /* Adjust as needed */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+
 /* Adjust headings within sections */
 .admin-section h2, #login-section h2 {
      margin-top: 0;
@@ -300,4 +308,73 @@ hr {
     margin: 20px 0;
     border: 0;
     border-top: 1px solid #eee;
+}
+/* --- Environment Variable Styles --- */
+.env-vars-container {
+    margin-top: 5px;
+    margin-bottom: 10px;
+    padding-left: 15px; /* Indent slightly */
+    border-left: 2px solid #eee; /* Visual cue */
+}
+
+.env-var-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.env-var-row input[type="text"] {
+    flex-grow: 1;
+    margin: 0 5px;
+    padding: 4px 6px; /* Smaller padding */
+    font-size: 0.9em; /* Slightly smaller font */
+}
+
+.env-var-row span {
+    margin: 0 5px;
+}
+
+.env-var-row .env-key-input {
+    max-width: 150px; /* Limit key width */
+}
+
+/* Separate styles for add and delete env var buttons */
+.delete-env-var-button {
+    padding: 3px 8px;
+    font-size: 0.9em;
+    cursor: pointer;
+    border: 1px solid #f5c6cb; /* Match background */
+    background-color: #f8d7da; /* Light red */
+    color: #721c24;
+    border-radius: 3px;
+    margin-left: 5px;
+}
+
+.add-env-var-button {
+    padding: 3px 8px; /* Keep smaller padding */
+    font-size: 0.9em; /* Keep smaller font */
+    cursor: pointer;
+    border: 1px solid #007bff; /* Blue border */
+    background-color: #007bff; /* Blue background */
+    color: #fff; /* White text */
+    border-radius: 3px;
+    margin-left: 0; /* Align with inputs */
+    margin-top: 5px; /* Space above add button */
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out; /* Add transition */
+}
+
+/* Keep delete button styles */
+.delete-env-var-button {
+    background-color: #f8d7da; /* Light red */
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.delete-env-var-button:hover {
+    background-color: #f1b0b7;
+}
+
+.add-env-var-button:hover {
+    background-color: #0056b3; /* Darker blue on hover */
+    border-color: #0056b3;
 }
