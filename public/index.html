@@ -43,22 +43,22 @@
             <button id="add-stdio-server-button" class="add-button">Add Stdio Server</button>
             <button id="add-sse-server-button" class="add-button">Add SSE Server</button>
             <hr>
-            <button id="save-config-button">Save Server Configuration</button>
-            <button id="restart-server-button-servers" class="restart-button">Restart Server to Apply</button>
+            <button id="save-config-button">Save & Reload Server Configuration</button> <!-- Renamed button -->
+            <!-- Removed separate reload button -->
             <p id="save-status" class="status-message"></p>
         </div>
 
         <!-- Tool Configuration Section -->
         <div id="tools-section" class="admin-section" style="display: none;">
              <h2>Tool Configuration</h2>
-             <p>Enable or disable specific tools provided by the connected servers. Changes require a server restart to take effect.</p>
+             <p>Enable or disable specific tools provided by the connected servers. Changes require reloading the configuration to take effect.</p>
              <div id="tool-list">
                  <!-- Tool entries will be loaded here -->
                  <p>Loading tools...</p>
              </div>
              <hr>
-             <button id="save-tool-config-button">Save Tool Configuration</button>
-             <button id="restart-server-button-tools" class="restart-button">Restart Server to Apply</button>
+             <button id="save-tool-config-button">Save & Reload Tool Configuration</button> <!-- Renamed button -->
+             <!-- Removed separate reload button -->
              <p id="save-tool-status" class="status-message"></p>
         </div>
     </main>

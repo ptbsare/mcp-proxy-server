@@ -6,11 +6,13 @@ import path from 'path';
 import crypto from 'crypto';
 import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
-import { createServer } from "./mcp-proxy.js";
+// Import the necessary functions from mcp-proxy and config
+import { createServer, updateBackendConnections, getCurrentProxyState } from "./mcp-proxy.js"; // Added getCurrentProxyState
 import http from 'http';
 import { fileURLToPath } from 'url';
 import { Tool, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { Config, loadConfig, isStdioConfig } from './config.js';
+// Import loadToolConfig as well
+import { Config, loadConfig, isStdioConfig, loadToolConfig } from './config.js';
 
 const exec = promisify(execCallback);
 
@@ -31,7 +33,8 @@ const TOOL_CONFIG_PATH = path.resolve(__dirname, '..', 'config', 'tool_config.js
 const SECRET_FILE_PATH = path.resolve(__dirname, '..', 'config', '.session_secret');
 const publicPath = path.join(__dirname, '..', 'public');
 
-const { server, cleanup, connectedClients } = await createServer();
+// createServer no longer returns connectedClients
+const { server, cleanup } = await createServer();
 
 const allowedKeysRaw = process.env.MCP_PROXY_SSE_ALLOWED_KEYS || "";
 const allowedKeys = new Set(allowedKeysRaw.split(',').map(k => k.trim()).filter(k => k.length > 0));
@@ -166,34 +169,19 @@ app.post('/admin/config', isAuthenticated, async (req, res) => {
 });
 
 
+// Updated to use getCurrentProxyState
 app.get('/admin/tools/list', isAuthenticated, async (req, res) => {
     console.log("Admin request: GET /admin/tools/list");
-    const allDiscoveredTools: Tool[] = [];
-
-    for (const connectedClient of connectedClients) {
-        try {
-            const result = await connectedClient.client.request(
-                { method: 'tools/list', params: {} },
-                ListToolsResultSchema
-            );
-            if (result.tools && result.tools.length > 0) {
-                const toolsWithQualifiedNames = result.tools.map(tool => ({
-                    ...tool,
-                    name: `${connectedClient.name}/${tool.name}`
-                }));
-                allDiscoveredTools.push(...toolsWithQualifiedNames);
-            }
-        } catch (error: any) {
-             const isMethodNotFoundError = error?.name === 'McpError' && error?.code === -32601;
-             if (isMethodNotFoundError) {
-                 console.warn(`Admin tools/list: Method 'tools/list' not found on server ${connectedClient.name}.`);
-             } else {
-                 console.error(`Admin tools/list: Error fetching tools from ${connectedClient.name}:`, error?.message || error);
-             }
-        }
+    try {
+        // Get the current tool state from the proxy module
+        const { tools } = getCurrentProxyState();
+        // The tools returned are already simplified for the UI
+        console.log(`Admin tools/list: Returning ${tools.length} discovered tools from proxy state.`);
+        res.json({ tools }); // Return the simplified list directly
+    } catch (error: any) {
+        console.error(`Admin tools/list: Error getting proxy state:`, error?.message || error);
+        res.status(500).json({ error: 'Failed to retrieve tool list from proxy state.' });
     }
-    console.log(`Admin tools/list: Returning ${allDiscoveredTools.length} discovered tools.`);
-    res.json({ tools: allDiscoveredTools });
 });
 
 app.get('/admin/tools/config', isAuthenticated, async (req, res) => {
@@ -231,17 +219,24 @@ app.post('/admin/tools/config', isAuthenticated, async (req, res) => {
         res.status(500).json({ error: 'Failed to write tool configuration file.' });
     }
 });
-app.post('/admin/server/restart', isAuthenticated, async (req, res) => {
-    console.log(`Admin request: POST /admin/server/restart by user '${req.session.user?.username}'`);
-    // Respond quickly to the client before shutting down
-    res.status(202).json({ success: true, message: 'Server restart initiated.' });
+// Renamed endpoint and updated logic for in-process reload
+app.post('/admin/server/reload', isAuthenticated, async (req, res) => {
+    console.log(`Admin request: POST /admin/server/reload by user '${req.session.user?.username}'`);
+    try {
+        // Load the latest configurations
+        const latestServerConfig = await loadConfig();
+        const latestToolConfig = await loadToolConfig();
 
-    // Initiate graceful shutdown after a short delay to ensure response is sent
-    setTimeout(() => {
-        console.log("Initiating shutdown via admin request...");
-        // Assuming 'shutdown' function handles the graceful exit
-        shutdown('SIGTERM'); // Or SIGINT, depending on preference
-    }, 500); // 500ms delay
+        // Trigger the update process in mcp-proxy
+        await updateBackendConnections(latestServerConfig, latestToolConfig);
+
+        console.log("Configuration reload completed successfully.");
+        res.json({ success: true, message: 'Server configuration reloaded successfully.' });
+
+    } catch (error: any) {
+        console.error("Error during configuration reload:", error);
+        res.status(500).json({ success: false, error: 'Failed to reload server configuration.', details: error.message });
+    }
 });
 
 

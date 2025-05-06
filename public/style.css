@@ -280,17 +280,17 @@ button:disabled {
 }
 
 
-/* Restart Button Styling */
-.restart-button {
+/* Reload Button Styling */
+.reload-button { /* Renamed class */
     background-color: #fd7e14; /* Orange */
     border-color: #fd7e14;
     color: white;
 }
-.restart-button:hover {
+.reload-button:hover { /* Renamed class */
     background-color: #e67312;
     border-color: #d96c10;
 }
-.restart-button:disabled {
+.reload-button:disabled { /* Renamed class */
     background-color: #ffc99c; /* Lighter orange when disabled */
     border-color: #ffc99c;
 }

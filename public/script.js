@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Server Section Elements
     const serversSection = document.getElementById('servers-section');
     const serverListDiv = document.getElementById('server-list');
-    const addServerButton = document.getElementById('add-server-button');
     const saveConfigButton = document.getElementById('save-config-button');
     const saveStatus = document.getElementById('save-status');
 
@@ -224,9 +223,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div><label>Arguments (comma-separated):</label><input type="text" class="server-args-input" value="${(serverConf.args || []).join(', ')}"></div>
                 <div><label>Environment Variables (JSON format):</label><textarea class="server-env-input">${JSON.stringify(serverConf.env || {}, null, 2)}</textarea></div>
                 <hr style="margin: 10px 0;">
-                <div><label>Install Directory (optional, relative path):</label><input type="text" class="server-install-dir-input" value="${installDirValue}"></div>
+                <div><label>Install Directory (optional, absolute path):</label><input type="text" class="server-install-dir-input" value="${installDirValue}"></div>
                 <div><label>Install Commands (optional, one per line):</label><textarea class="server-install-cmds-input">${(serverConf.installCommands || []).join('\n')}</textarea></div>
-                <button class="install-button" ${!installDirValue || !(serverConf.installCommands || []).length ? 'disabled title="Install directory must be set to enable install button (commands optional)"' : ''}>Check/Run Install</button>
+                <button class="install-button" ${!installDirValue ? 'disabled title="Install directory must be set to enable install button (commands optional)"' : ''}>Check/Run Install</button> <!-- Updated disabled logic/title -->
                 <span class="install-status" style="margin-left: 10px; font-style: italic;"></span>
             `;
         } else {
@@ -260,8 +259,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const installDirInput = detailsDiv.querySelector('.server-install-dir-input');
             if (installDirInput) {
                  installDirInput.addEventListener('input', () => {
-                     installButton.disabled = !installDirInput.value.trim();
-                     installButton.title = installButton.disabled ? 'Install directory must be set to enable install button (commands optional)' : '';
+                     installButton.disabled = !installDirInput.value.trim(); // Disable if dir is empty
+                     installButton.title = installButton.disabled ? 'Install directory must be set to enable install button' : ''; // Corrected title
                  });
             }
         }
@@ -281,10 +280,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     installDirInput.value = newDefaultInstallDir;
                     // Also update install button state if needed
                     if (installButton) {
-                         installButton.disabled = !newDefaultInstallDir;
-                         installButton.title = installButton.disabled ? 'Install directory must be set to enable install button (commands optional)' : '';
-                    }
-                }
+                         installButton.disabled = !newDefaultInstallDir; // Disable if dir is empty
+                         installButton.title = installButton.disabled ? 'Install directory must be set to enable install button' : ''; // Corrected title
+                   }
+               }
             });
         }
 
@@ -315,6 +314,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
+    // --- Trigger Reload Function ---
+    const triggerReload = async (statusElement) => {
+        // No confirmation needed here as it follows a save action
+        statusElement.textContent += ' Reloading configuration...';
+        statusElement.style.color = 'orange';
+        try {
+            const reloadResponse = await fetch('/admin/server/reload', { method: 'POST' });
+            const reloadResult = await reloadResponse.json();
+            if (reloadResponse.ok && reloadResult.success) {
+                statusElement.textContent = 'Configuration Saved & Reloaded Successfully!';
+                statusElement.style.color = 'green';
+                 // Reload tool data if on the tools page, as tools might have changed
+                 if (toolsSection.style.display === 'block') {
+                    toolDataLoaded = false; // Force reload
+                    loadToolData();
+                }
+            } else {
+                 statusElement.textContent = `Save successful, but failed to reload configuration: ${reloadResult.error || reloadResponse.statusText}`;
+                 statusElement.style.color = 'red';
+            }
+        } catch (reloadError) { // Catch reload errors
+            console.error("Reload error after save:", reloadError);
+            const errorMessage = (reloadError instanceof Error) ? reloadError.message : String(reloadError);
+            statusElement.textContent = `Save successful, but network error during reload: ${errorMessage}`;
+            statusElement.style.color = 'red';
+        } finally {
+             setTimeout(() => { statusElement.textContent = ''; statusElement.style.color = 'green'; }, 7000); // Clear status after longer delay
+        }
+    };
+
+
+    // --- Save Button Listeners (Now include reload) ---
     saveConfigButton.addEventListener('click', async () => {
         saveStatus.textContent = 'Saving server configuration...';
         saveStatus.style.color = 'orange';
@@ -334,9 +365,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 isValid = false; errorMsg = 'Server Key cannot be empty.'; newKeyInput.style.border = '1px solid red'; return;
             } else { newKeyInput.style.border = ''; }
 
-            if (newConfig.mcpServers[newKey]) {
-                isValid = false; errorMsg = `Duplicate Server Key: "${newKey}".`; newKeyInput.style.border = '1px solid red'; return;
+            // Check for duplicate key *before* trying to access newConfig.mcpServers[newKey]
+            const existingKeys = Object.keys(newConfig.mcpServers);
+            if (existingKeys.includes(newKey)) {
+                 isValid = false; errorMsg = `Duplicate Server Key: "${newKey}".`; newKeyInput.style.border = '1px solid red'; return;
             }
+
 
             const nameInput = entryDiv.querySelector('.server-name-input');
             const activeInput = entryDiv.querySelector('.server-active-input');
@@ -349,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const installDirInput = entryDiv.querySelector('.server-install-dir-input'); // Stdio specific
             const installCmdsInput = entryDiv.querySelector('.server-install-cmds-input'); // Stdio specific
 
-            const serverData = {
+            const serverData = { // Define a proper type if needed later
                 name: nameInput.value.trim() || undefined,
                 active: activeInput.checked
             };
@@ -379,16 +413,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     serverData.env = envString ? JSON.parse(envString) : {};
                     if (typeof serverData.env !== 'object' || serverData.env === null || Array.isArray(serverData.env)) throw new Error("Must be JSON object.");
                     envInput.style.border = '';
-                } catch (e) { isValid = false; errorMsg = `Invalid JSON in Env Vars for "${newKey}": ${e.message}`; envInput.style.border = '1px solid red'; }
+                } catch (e) {
+                    const message = (e instanceof Error) ? e.message : String(e);
+                    isValid = false; errorMsg = `Invalid JSON in Env Vars for "${newKey}": ${message}`; envInput.style.border = '1px solid red';
+                }
 
                 if (installDirInput && installCmdsInput) {
                     const installDir = installDirInput.value.trim();
                     const installCmds = installCmdsInput.value.trim().split('\n').map(cmd => cmd.trim()).filter(cmd => cmd);
-                    if (installDir && installCmds.length > 0) {
-                        serverData.installDirectory = installDir;
-                        serverData.installCommands = installCmds;
-                    } else if (installDir || installCmds.length > 0) {
-                        console.warn(`Incomplete install config for "${newKey}". Ignoring.`);
+                    // Store install config even if commands are empty, if directory is set
+                    if (installDir) {
+                         serverData.installDirectory = installDir;
+                         serverData.installCommands = installCmds; // Store empty array if no commands
+                    } else if (installCmds.length > 0) {
+                         // If commands exist but dir doesn't, it's an incomplete config
+                         console.warn(`Incomplete install config for "${newKey}" (commands without directory). Ignoring install config.`);
                     }
                 }
             }
@@ -400,23 +439,31 @@ document.addEventListener('DOMContentLoaded', () => {
             saveStatus.textContent = `Error: ${errorMsg}`; saveStatus.style.color = 'red'; alert(`Validation Error: ${errorMsg}`); return;
         }
 
+        // Corrected Try-Catch structure for Save operation
         try {
             const response = await fetch('/admin/config', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newConfig)
             });
             const result = await response.json();
             if (response.ok && result.success) {
-                saveStatus.textContent = 'Server configuration saved successfully!'; saveStatus.style.color = 'green';
-                currentServerConfig = newConfig; renderServerConfig(currentServerConfig); // Re-render
+                saveStatus.textContent = 'Server configuration saved.'; // Indicate save success first
+                currentServerConfig = newConfig;
+                renderServerConfig(currentServerConfig); // Re-render immediately after save
+                await triggerReload(saveStatus); // Trigger reload
             } else {
                 saveStatus.textContent = `Error saving server config: ${result.error || 'Unknown error'}`; saveStatus.style.color = 'red';
+                 setTimeout(() => { saveStatus.textContent = ''; saveStatus.style.color = 'green'; }, 5000); // Clear error status
             }
-        } catch (error) {
-            console.error("Save server config error:", error); saveStatus.textContent = `Error saving server config: ${error.message}`; saveStatus.style.color = 'red';
-        } finally {
-            setTimeout(() => { saveStatus.textContent = ''; saveStatus.style.color = 'green'; }, 5000);
+        } catch (error) { // Catch save errors
+            console.error("Save server config error:", error);
+            const message = (error instanceof Error) ? error.message : String(error);
+            saveStatus.textContent = `Error saving server config: ${message}`;
+            saveStatus.style.color = 'red';
+            setTimeout(() => { saveStatus.textContent = ''; saveStatus.style.color = 'green'; }, 5000); // Clear error status
         }
+        // No finally block needed here, handled by triggerReload or catch
     });
+
 
     // --- Installation Handling ---
     const handleInstallClick = async (serverKey, entryDiv) => {
@@ -466,8 +513,9 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => saveToolStatus.textContent = '', 3000);
         } catch (error) {
             console.error("Error loading tool data:", error);
-            toolListDiv.innerHTML = `<p class="error-message">Error loading tool data: ${error.message}</p>`;
-            saveToolStatus.textContent = `Error: ${error.message}`; saveToolStatus.style.color = 'red';
+            const message = (error instanceof Error) ? error.message : String(error);
+            toolListDiv.innerHTML = `<p class="error-message">Error loading tool data: ${message}</p>`;
+            saveToolStatus.textContent = `Error: ${message}`; saveToolStatus.style.color = 'red';
         }
     };
 
@@ -507,7 +555,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     saveToolConfigButton.addEventListener('click', async () => {
-        saveToolStatus.textContent = 'Saving tool configuration...'; saveToolStatus.style.color = 'orange';
+        saveToolStatus.textContent = 'Saving tool configuration...';
+        saveToolStatus.style.color = 'orange';
         const newToolConfigPayload = { tools: {} };
         const checkboxes = toolListDiv.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(checkbox => {
@@ -521,48 +570,24 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (response.ok && result.success) {
-                saveToolStatus.textContent = result.message || 'Tool configuration saved! Restart server to apply.'; saveToolStatus.style.color = 'green';
+                saveToolStatus.textContent = 'Tool configuration saved.'; // Indicate save success first
                 currentToolConfig = newToolConfigPayload.tools; // Update local state
+                await triggerReload(saveToolStatus); // Trigger reload
             } else {
                 saveToolStatus.textContent = `Error saving tool config: ${result.error || 'Unknown error'}`; saveToolStatus.style.color = 'red';
+                 setTimeout(() => { saveToolStatus.textContent = ''; saveToolStatus.style.color = 'green'; }, 5000); // Clear error status
             }
         } catch (error) {
-            console.error("Save tool config error:", error); saveToolStatus.textContent = `Error saving tool config: ${error.message}`; saveToolStatus.style.color = 'red';
-        } finally {
-            setTimeout(() => { saveToolStatus.textContent = ''; saveToolStatus.style.color = 'green'; }, 7000);
+            console.error("Save tool config error:", error);
+            const message = (error instanceof Error) ? error.message : String(error);
+            saveToolStatus.textContent = `Error saving tool config: ${message}`;
+            saveToolStatus.style.color = 'red';
+             setTimeout(() => { saveToolStatus.textContent = ''; saveToolStatus.style.color = 'green'; }, 5000); // Clear error status
         }
+         // Removed finally block here as it's handled within triggerReload or after save error
     });
 
-    // --- Restart Server ---
-    const handleRestartClick = async (button) => {
-        if (!confirm('Are you sure you want to restart the server? This will disconnect all clients and apply saved configuration changes.')) {
-            return;
-        }
-        button.disabled = true;
-        button.textContent = 'Restarting...';
-        try {
-            const response = await fetch('/admin/server/restart', { method: 'POST' });
-            const result = await response.json();
-            if (response.status === 202 && result.success) {
-                alert('Server restart initiated. The page might become unresponsive as the server shuts down.');
-                // Optionally, redirect or disable UI further
-                // For now, just leave the button disabled
-            } else {
-                alert(`Failed to initiate restart: ${result.error || response.statusText}`);
-                button.disabled = false;
-                button.textContent = 'Restart Server to Apply';
-            }
-        } catch (error) {
-            console.error("Restart error:", error);
-            alert(`An error occurred while trying to restart the server: ${error.message}`);
-            button.disabled = false;
-            button.textContent = 'Restart Server to Apply';
-        }
-    };
-
-    document.getElementById('restart-server-button-servers')?.addEventListener('click', (e) => handleRestartClick(e.target));
-    document.getElementById('restart-server-button-tools')?.addEventListener('click', (e) => handleRestartClick(e.target));
-
+    // Removed handleReloadClick and its listeners as logic is now in triggerReload called by save buttons
 
     // --- Initial Load ---
     checkLoginStatus(); // Check login and load initial data if successful
