@@ -27,7 +27,7 @@ global.EventSource = eventsource.EventSource;
 // --- Shared State ---
 // Keep track of connected clients and the maps globally within this module
 let currentConnectedClients: ConnectedClient[] = [];
-const toolToClientMap = new Map<string, ConnectedClient>();
+const toolToClientMap = new Map<string, { client: ConnectedClient, toolInfo: Tool }>(); // Store full tool info
 const resourceToClientMap = new Map<string, ConnectedClient>();
 const promptToClientMap = new Map<string, ConnectedClient>();
 let currentToolConfig: ToolConfig = { tools: {} }; // Store loaded tool config
@@ -105,7 +105,8 @@ export const updateBackendConnections = async (newServerConfig: Config, newToolC
                     const toolSettings = currentToolConfig.tools[qualifiedName];
                     const isEnabled = !toolSettings || toolSettings.enabled !== false;
                     if (isEnabled) {
-                        toolToClientMap.set(qualifiedName, connectedClient);
+                        // Store the client and the full tool info from the backend
+                        toolToClientMap.set(qualifiedName, { client: connectedClient, toolInfo: tool });
                     }
                 }
             }
@@ -152,13 +153,13 @@ export const updateBackendConnections = async (newServerConfig: Config, newToolC
 // --- Function to get current proxy state ---
 export const getCurrentProxyState = () => {
     // Return copies or relevant info to avoid direct mutation
-    const tools = Array.from(toolToClientMap.entries()).map(([qualifiedName, client]) => {
+    const tools = Array.from(toolToClientMap.entries()).map(([qualifiedName, { client: connectedClient, toolInfo }]) => {
         // Simplified representation for admin UI list
         return {
             name: qualifiedName, // Full name like "serverKey/toolName"
-            serverName: client?.name || 'Unknown',
+            serverName: connectedClient?.name || 'Unknown', // Access name via connectedClient
             // Description/schema would require more complex caching or fetching on demand
-            description: `[${client?.name || 'Unknown'}] Tool (details omitted)`
+            description: `[${connectedClient?.name || 'Unknown'}] ${toolInfo.name}` // Use original tool name from toolInfo
         };
     });
     // Could add resources and prompts here if needed by admin UI later
@@ -195,20 +196,17 @@ export const createServer = async () => {
 
   server.setRequestHandler(ListToolsRequestSchema, async (request) => {
     console.log("Received tools/list request - returning from cached map");
-    // Directly use the pre-populated map
+    // Directly use the pre-populated map which now contains full tool info
     const enabledTools: Tool[] = [];
-    for (const [qualifiedName, connectedClient] of toolToClientMap.entries()) {
-        // Need to reconstruct the Tool object slightly for the response
-        const nameParts = qualifiedName.split('/');
-        const originalToolName = nameParts.slice(1).join('/');
-        // We don't have the original description/schema easily here without another request.
-        // For simplicity, we'll return minimal info based on the map.
-        // A more robust solution might cache the full Tool object in the map.
-         enabledTools.push({
-             name: qualifiedName,
-             description: `[${connectedClient.name}] Tool (details omitted in list)`, // Simplified description
-             inputSchema: { type: "object", properties: {} }, // More complete minimal schema
-         });
+    for (const [qualifiedName, { client: connectedClient, toolInfo }] of toolToClientMap.entries()) {
+        // Construct the Tool object for the response using cached info
+        // The name exposed by the proxy is the qualified name
+        // The description and schema are from the original tool
+        enabledTools.push({
+            name: qualifiedName, // Use the qualified name for the proxy's list
+            description: toolInfo.description, // Use original description
+            inputSchema: toolInfo.inputSchema, // Use original schema
+        });
     }
     console.log(`Returning ${enabledTools.length} enabled tools from map.`);
     return { tools: enabledTools };
@@ -217,26 +215,23 @@ export const createServer = async () => {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // This logic remains largely the same, using the map
     const { name: qualifiedName, arguments: args } = request.params;
-    const clientForTool = toolToClientMap.get(qualifiedName);
+    const mapEntry = toolToClientMap.get(qualifiedName); // Get the map entry { client, toolInfo }
 
-    if (!clientForTool) {
+    if (!mapEntry) {
       // This should ideally not happen if the client uses the list provided by tools/list,
       // but good to have a check. It also implicitly handles disabled tools as they won't be in the map.
       console.error(`Attempted to call unknown or disabled tool: ${qualifiedName}`);
       throw new Error(`Unknown or disabled tool: ${qualifiedName}`);
     }
+    const { client: clientForTool, toolInfo } = mapEntry; // Destructure the client and toolInfo
 
-    // Extract the original tool name for the backend server
-    const nameParts = qualifiedName.split('/');
-    if (nameParts.length < 2) {
-        console.error(`Invalid qualified tool name format received: ${qualifiedName}`);
-        throw new Error(`Internal error: Invalid tool name format.`);
-    }
-    const originalToolName = nameParts.slice(1).join('/'); // Handle cases where tool name might contain '/'
+    // Extract the original tool name for the backend server (already available in toolInfo)
+    const originalToolName = toolInfo.name; // Use the name from the cached toolInfo
 
     try {
-      console.log(`Forwarding tool call for '${qualifiedName}' to server '${clientForTool.name}' as tool '${originalToolName}'`);
+      console.log(`Forwarding tool call for '${qualifiedName}' to server '${clientForTool.name}' as tool '${originalToolName}'`); // Access name via clientForTool
 
+      // Access the actual MCP client via clientForTool.client
       return await clientForTool.client.request(
         {
           method: 'tools/call',
@@ -251,7 +246,7 @@ export const createServer = async () => {
         CompatibilityCallToolResultSchema
       );
     } catch (error) {
-      console.error(`Error calling tool through ${clientForTool.name}:`, error);
+      console.error(`Error calling tool through ${clientForTool.name}:`, error); // Access name via clientForTool
       throw error;
     }
   });
