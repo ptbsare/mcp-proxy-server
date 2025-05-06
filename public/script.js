@@ -221,7 +221,13 @@ document.addEventListener('DOMContentLoaded', () => {
             detailsHtml += `
                 <div><label>Command:</label><input type="text" class="server-command-input" value="${serverConf.command || ''}" required></div>
                 <div><label>Arguments (comma-separated):</label><input type="text" class="server-args-input" value="${(serverConf.args || []).join(', ')}"></div>
-                <div><label>Environment Variables (JSON format):</label><textarea class="server-env-input">${JSON.stringify(serverConf.env || {}, null, 2)}</textarea></div>
+                <div>
+                    <label>Environment Variables:</label>
+                    <div class="env-vars-container">
+                        <!-- Env vars will be added here -->
+                    </div>
+                    <button type="button" class="add-env-var-button">+ Add Variable</button>
+                </div>
                 <hr style="margin: 10px 0;">
                 <div><label>Install Directory (optional, absolute path):</label><input type="text" class="server-install-dir-input" value="${installDirValue}"></div>
                 <div><label>Install Commands (optional, one per line):</label><textarea class="server-install-cmds-input">${(serverConf.installCommands || []).join('\n')}</textarea></div>
@@ -236,6 +242,22 @@ document.addEventListener('DOMContentLoaded', () => {
         entryDiv.appendChild(detailsDiv);
 
         // --- Event Listeners ---
+
+        // Render initial Env Vars for Stdio
+        const envVarsContainer = detailsDiv.querySelector('.env-vars-container');
+        if (envVarsContainer && serverConf.env && typeof serverConf.env === 'object') {
+            Object.entries(serverConf.env).forEach(([envKey, envValue]) => {
+                addEnvVarRow(envVarsContainer, envKey, envValue);
+            });
+        }
+
+        // Add Env Var button listener
+        const addEnvVarButton = detailsDiv.querySelector('.add-env-var-button');
+        if (addEnvVarButton) {
+            addEnvVarButton.addEventListener('click', () => {
+                addEnvVarRow(envVarsContainer); // Add empty row
+            });
+        }
 
         // Toggle collapse/expand
         headerDiv.querySelector('h3').addEventListener('click', () => {
@@ -288,6 +310,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         serverListDiv.appendChild(entryDiv);
+    };
+
+
+    // --- Helper function to add an environment variable row ---
+    const addEnvVarRow = (container, key = '', value = '') => {
+        const rowDiv = document.createElement('div');
+        rowDiv.classList.add('env-var-row');
+        rowDiv.innerHTML = `
+            <input type="text" class="env-key-input" placeholder="Key" value="${key}">
+            <span>=</span>
+            <input type="text" class="env-value-input" placeholder="Value" value="${value}">
+            <button type="button" class="delete-env-var-button">X</button>
+        `;
+        // Add listener to the delete button for this specific row
+        rowDiv.querySelector('.delete-env-var-button').addEventListener('click', () => {
+            rowDiv.remove();
+        });
+        container.appendChild(rowDiv);
     };
 
 
@@ -379,7 +419,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const bearerTokenInput = entryDiv.querySelector('.server-bearertoken-input'); // SSE specific
             const commandInput = entryDiv.querySelector('.server-command-input'); // Stdio specific
             const argsInput = entryDiv.querySelector('.server-args-input'); // Stdio specific
-            const envInput = entryDiv.querySelector('.server-env-input'); // Stdio specific
+            // const envInput = entryDiv.querySelector('.server-env-input'); // Stdio specific - REMOVED
+            const envVarsContainer = entryDiv.querySelector('.env-vars-container'); // Stdio specific - NEW
             const installDirInput = entryDiv.querySelector('.server-install-dir-input'); // Stdio specific
             const installCmdsInput = entryDiv.querySelector('.server-install-cmds-input'); // Stdio specific
 
@@ -408,15 +449,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 const argsString = argsInput.value.trim();
                 serverData.args = argsString ? argsString.split(',').map(arg => arg.trim()).filter(arg => arg) : [];
 
-                try {
-                    const envString = envInput.value.trim();
-                    serverData.env = envString ? JSON.parse(envString) : {};
-                    if (typeof serverData.env !== 'object' || serverData.env === null || Array.isArray(serverData.env)) throw new Error("Must be JSON object.");
-                    envInput.style.border = '';
-                } catch (e) {
-                    const message = (e instanceof Error) ? e.message : String(e);
-                    isValid = false; errorMsg = `Invalid JSON in Env Vars for "${newKey}": ${message}`; envInput.style.border = '1px solid red';
+                // Collect Env Vars from dynamic rows
+                serverData.env = {};
+                if (envVarsContainer) {
+                    const rows = envVarsContainer.querySelectorAll('.env-var-row');
+                    rows.forEach(row => {
+                        const keyInput = row.querySelector('.env-key-input');
+                        const valueInput = row.querySelector('.env-value-input');
+                        const key = keyInput.value.trim();
+                        const value = valueInput.value.trim(); // Keep value as is (don't trim if user wants spaces)
+                        if (key) { // Only add if key is not empty
+                            if (serverData.env.hasOwnProperty(key)) {
+                                isValid = false;
+                                errorMsg = `Duplicate environment variable key "${key}" for server "${newKey}".`;
+                                keyInput.style.border = '1px solid red';
+                                valueInput.style.border = '1px solid red';
+                            } else {
+                                serverData.env[key] = value;
+                                keyInput.style.border = ''; // Reset border on valid
+                                valueInput.style.border = '';
+                            }
+                        } else if (value) {
+                            // Key is empty but value is not - treat as error or ignore? Let's ignore for now.
+                            // Optionally add validation error here if needed.
+                            // isValid = false; errorMsg = `Environment variable key cannot be empty if value is set for server "${newKey}".`;
+                            // keyInput.style.border = '1px solid red';
+                        } else {
+                             keyInput.style.border = ''; // Reset border if both empty
+                             valueInput.style.border = '';
+                        }
+                    });
                 }
+                 if (!isValid) return; // Stop if duplicate env key found
+
 
                 if (installDirInput && installCmdsInput) {
                     const installDir = installDirInput.value.trim();
