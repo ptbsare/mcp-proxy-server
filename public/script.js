@@ -590,7 +590,8 @@ document.addEventListener('DOMContentLoaded', () => {
             toolListDiv.innerHTML = '<p>No tools discovered from connected servers.</p>'; return;
         }
         const toolsByServer = discoveredTools.reduce((acc, tool) => {
-            const serverName = tool.name.split('/')[0];
+            const parts = tool.name.split('--');
+            const serverName = parts[0];
             if (!acc[serverName]) acc[serverName] = [];
             acc[serverName].push(tool);
             return acc;
@@ -608,7 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 toolDiv.innerHTML = `
                     <label>
                         <input type="checkbox" data-tool-name="${qualifiedName}" ${isEnabled ? 'checked' : ''}>
-                        <strong>${qualifiedName.split('/').slice(1).join('/')}</strong> <!-- Show only tool name -->
+                        <strong>${qualifiedName.split('--').slice(1).join('--')}</strong> <!-- Show only tool name -->
                         <span style="color: #6c757d; margin-left: 5px;">(${qualifiedName})</span> <!-- Show full name muted -->
                         ${tool.description ? `<p style="margin-left: 20px; font-size: 0.9em; color: #555;">${tool.description}</p>` : ''}
                     </label>
