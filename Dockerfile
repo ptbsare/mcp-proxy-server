@@ -3,7 +3,7 @@ FROM nikolaik/python-nodejs:python3.13-nodejs23
 WORKDIR /mcp-proxy-server
 
 ARG PRE_INSTALLED_PIP_PACKAGES_ARG="mcp-server-time markitdown-mcp mcp-proxy uv"
-ARG PRE_INSTALLED_NPM_PACKAGES_ARG="g-search-mcp fetcher-mcp playwright time-mcp mcp-trends-hub@1.6.0 @adenot/mcp-google-search edgeone-pages-mcp @modelcontextprotocol/server-filesystem mcp-server-weibo @variflight-ai/variflight-mcp @baidumap/mcp-server-baidu-map @modelcontextprotocol/inspector"
+ARG PRE_INSTALLED_NPM_PACKAGES_ARG="g-search-mcp fetcher-mcp playwright time-mcp mcp-trends-hub @adenot/mcp-google-search edgeone-pages-mcp @modelcontextprotocol/server-filesystem mcp-server-weibo @variflight-ai/variflight-mcp @baidumap/mcp-server-baidu-map @modelcontextprotocol/inspector"
 ARG PRE_INSTALLED_INIT_COMMAND_ARG="playwright install --with-deps chromium"
 
 ENV PRE_INSTALLED_PIP_PACKAGES=$PRE_INSTALLED_PIP_PACKAGES_ARG
