@@ -235,7 +235,7 @@ This proxy server can be used in two main ways:
    - Replace `/path/to/mcp-proxy-server/build/index.js` with the actual path to the built entry point of this proxy server project. Ensure the `config` directory is correctly located relative to where the command is run, or use absolute paths in the proxy's own config if needed.
 
 **2. As an SSE MCP Server:**
-   Run the proxy server in SSE mode (e.g., `npm run dev:sse` or the Docker container). Then, configure your MCP client to connect to the proxy's SSE endpoint (e.g., `http://localhost:3663/sse`). If API key authentication is enabled on the proxy, provide the key in the client config.
+   Run the proxy server in SSE mode (e.g., `npm run dev:sse` or the Docker container). Then, configure your MCP client to connect to the proxy's SSE endpoint. If API key authentication is enabled on the proxy (`MCP_PROXY_SSE_ALLOWED_KEYS`), provide the key in the client configuration, preferably via the URL query parameter `?key=...` for broader client compatibility.
 
    Example for Claude Desktop (`claude_desktop_config.json`):
    ```json
@@ -243,8 +243,10 @@ This proxy server can be used in two main ways:
      "mcpServers": {
        "my-proxy-sse": {
          "name": "MCP Proxy (SSE)",
-         "url": "http://localhost:3663/sse",
-         "apiKey": "clientkey1" // Key defined in MCP_PROXY_SSE_ALLOWED_KEYS
+         // Append ?key=<your_key> if authentication is enabled
+         "url": "http://localhost:3663/sse?key=clientkey1"
+         // The apiKey field might not be supported by all clients for SSE auth
+         // "apiKey": "clientkey1"
        }
      }
    }
