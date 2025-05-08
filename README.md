@@ -8,14 +8,14 @@
 *   **🔒 Dual SSE Authentication:** Secure your SSE endpoint with flexible authentication options (`Authorization: Bearer <token>` or `X-API-Key: <key>`).
 *   **🔄 Improved SSE Session Handling**: More robust handling of client reconnections, relying on server-sent `endpoint` events for session synchronization.
 *   **✨ Real-time Install Output**: Monitor Stdio server installation progress (stdout/stderr) directly in the Web UI.
-*   **✨ Web Terminal**: Access a command-line terminal within the Admin UI for direct server interaction (optional,  use with caution due to security risks).
+*   **✨ Web Terminal**: Access a command-line terminal within the Admin UI for direct server interaction (optional, use with caution due to security risks).
 
 ---
 
 This server acts as a central hub for Model Context Protocol (MCP) resource servers. It can:
 
 - Connect to and manage multiple backend MCP servers (both Stdio and SSE types).
-- Expose their combined capabilities (tools, resources) through a single, unified SSE interface.
+- Expose their combined capabilities (tools, resources) through a single, unified SSE interface **or** act as a single Stdio-based MCP server itself.
 - Handle routing of requests to the appropriate backend servers.
 - Aggregate responses if needed (though primarily acts as a proxy).
 - Support multiple simultaneous SSE client connections with optional API key authentication.
@@ -117,15 +117,15 @@ Example `config/tool_config.json`:
 
 ### 3. Environment Variables
 
--   **`PORT`**: Port for the proxy server's main SSE endpoint (and Admin UI if enabled). Default: `3663`.
+-   **`PORT`**: Port for the proxy server's main SSE endpoint (and Admin UI if enabled). Default: `3663`. **Note:** This is only used when running in SSE mode (e.g., via `npm run dev:sse` or the Docker container). The `npm run dev` script runs in Stdio mode.
     ```bash
     export PORT=8080
     ```
--   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (Optional) Comma-separated list of API keys to secure the proxy's main `/sse` endpoint. If not set, authentication is disabled. Clients must provide a key via `X-Api-Key` header or `?key=` query parameter.
+-   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (Optional) Comma-separated list of API keys to secure the proxy's main `/sse` endpoint (only applicable in SSE mode). If not set, authentication is disabled. Clients must provide a key via `X-Api-Key` header or `?key=` query parameter.
     ```bash
     export MCP_PROXY_SSE_ALLOWED_KEYS="client_key1,client_key2"
     ```
--   **`ENABLE_ADMIN_UI`**: (Optional) Set to `true` to enable the Web Admin UI. Default: `false`.
+-   **`ENABLE_ADMIN_UI`**: (Optional) Set to `true` to enable the Web Admin UI (only applicable in SSE mode). Default: `false`.
     ```bash
     export ENABLE_ADMIN_UI=true
     ```
@@ -156,10 +156,10 @@ npm run build
 
 Run in development mode (uses `tsx` for direct TS execution with auto-restart on changes):
 ```bash
-# For the main proxy server (usually connects to stdio backends)
+# Run as a Stdio MCP server (default mode)
 npm run dev
 
-# For the SSE-only server variant (if needed, uses src/sse.ts entry point)
+# Run as an SSE MCP server (enables SSE endpoint and Admin UI if configured)
 # Ensure environment variables (PORT, ENABLE_ADMIN_UI etc.) are set as needed
 ENABLE_ADMIN_UI=true npm run dev:sse
 ```
@@ -171,15 +171,21 @@ npm run watch
 
 ## Running with Docker
 
-A `Dockerfile` is provided which includes `node-pty`.
+A `Dockerfile` is provided. The container runs the server in **SSE mode** by default (using `build/sse.js`) and includes all necessary dependencies.
 
-**Building the Image:**
+**Recommended: Using the Pre-built Image (from GHCR)**
+
+It's recommended to use the pre-built image from GitHub Container Registry for easier setup.
+
 ```bash
-docker build -t mcp-proxy-server .
+# Pull the latest image
+docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
+
+# Or pull a specific version (e.g., v0.1.0)
+# docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:v0.1.0
 ```
 
-**Running the Container:**
-Mount your configuration directory and optionally a tools directory. Set environment variables as needed.
+Then, run the container using the pulled image name:
 
 ```bash
 docker run -d \
@@ -192,37 +198,65 @@ docker run -d \
   -v ./my_config:/app/config \
   -v /path/on/host/to/tools:/tools \
   --name mcp-proxy \
-  mcp-proxy-server
+  ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
 ```
 - Replace `./my_config` with your host path containing `mcp_server.json` and optionally `tool_config.json`. The container expects config files in `/app/config`.
 - Replace `/path/on/host/to/tools` if your Stdio servers require access to executables mounted at `/tools` inside the container.
-- The image includes `node-pty` by default.
+- Adjust the tag (`:latest`) if you pulled a specific version.
+- Set environment variables using the `-e` flag as needed.
+
+**Building the Image Locally (Optional):**
+```bash
+docker build -t mcp-proxy-server .
+```
+*(If you build locally, use `mcp-proxy-server` instead of the `ghcr.io/...` image name in the `docker run` command above).*
 
 ## Installation & Usage with Clients
 
-Configure your MCP client (like Claude Desktop, VS Code extensions, etc.) to connect to the proxy server's SSE endpoint (e.g., `http://localhost:3663/sse`). If you enabled API key authentication, provide one of the allowed keys in the client configuration (usually via `apiKey` or headers).
+This proxy server can be used in two main ways:
 
-Example for Claude Desktop (`claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "my-proxy": {
-      "name": "MCP Proxy",
-      "url": "http://localhost:3663/sse",
-      "apiKey": "clientkey1"
-    }
-  }
-}
-```
-*(Note: The original README section about installing the proxy *as* a backend server seems less relevant now, as the primary use case is running the proxy and having clients connect *to* it. The above example shows how a client connects.)*
+**1. As a Stdio MCP Server:**
+   Configure your MCP client (like Claude Desktop) to run the proxy server directly using its command (`build/index.js`). The proxy will then connect to the backend servers defined in its `config/mcp_server.json`.
+
+   Example for Claude Desktop (`claude_desktop_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "mcp-proxy": {
+         "name": "MCP Proxy (Aggregator)",
+         "command": "/path/to/mcp-proxy-server/build/index.js",
+         "env": {
+            "NODE_ENV": "production" // Optional: Set environment for the proxy itself
+         }
+       }
+     }
+   }
+   ```
+   - Replace `/path/to/mcp-proxy-server/build/index.js` with the actual path to the built entry point of this proxy server project. Ensure the `config` directory is correctly located relative to where the command is run, or use absolute paths in the proxy's own config if needed.
+
+**2. As an SSE MCP Server:**
+   Run the proxy server in SSE mode (e.g., `npm run dev:sse` or the Docker container). Then, configure your MCP client to connect to the proxy's SSE endpoint (e.g., `http://localhost:3663/sse`). If API key authentication is enabled on the proxy, provide the key in the client config.
+
+   Example for Claude Desktop (`claude_desktop_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "my-proxy-sse": {
+         "name": "MCP Proxy (SSE)",
+         "url": "http://localhost:3663/sse",
+         "apiKey": "clientkey1" // Key defined in MCP_PROXY_SSE_ALLOWED_KEYS
+       }
+     }
+   }
+   ```
 
 ## Debugging
 
-Use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) for debugging communication:
+Use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) for debugging communication (primarily for Stdio mode):
 ```bash
 npm run inspector
 ```
-This script wraps the execution of the built server (`build/index.js`) with the inspector. Access the inspector UI via the URL provided in the console output.
+This script wraps the execution of the built server (`build/index.js`) with the inspector. Access the inspector UI via the URL provided in the console output. For SSE mode, standard browser developer tools can be used to inspect network requests.
 
 ## Reference
 
