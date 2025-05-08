@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Web Terminal</title>
+    <link rel="stylesheet" href="style.css"> <!-- Link to existing styles -->
+    <!-- Import xterm.js and addons (use CDN for simplicity, or download locally) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #1e1e1e; /* Dark background */
+            color: #ccc; /* Light text */
+            display: flex;
+            flex-direction: column;
+        }
+        #terminal-container {
+            flex-grow: 1; /* Take remaining height */
+            padding: 10px;
+            overflow: hidden; /* Let xterm handle scrolling */
+        }
+        #terminal {
+            width: 100%;
+            height: 100%;
+        }
+        .terminal-header {
+            background-color: #333;
+            padding: 5px 10px;
+            font-family: sans-serif;
+            font-size: 0.9em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .terminal-status {
+            color: lightgreen;
+        }
+        .terminal-status.disconnected {
+            color: orange;
+        }
+         .terminal-status.error {
+            color: red;
+        }
+        .back-link {
+             color: #aaa;
+             text-decoration: none;
+        }
+         .back-link:hover {
+             color: #fff;
+         }
+    </style>
+</head>
+<body>
+    <div class="terminal-header">
+        <span>Web Terminal</span>
+        <span id="terminal-status" class="terminal-status disconnected">Disconnected</span>
+        <a href="/admin/index.html" class="back-link">Back to Admin</a>
+    </div>
+    <div id="terminal-container">
+        <div id="terminal"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="terminal.js"></script> <!-- Link to our terminal logic -->
+</body>
+</html>
