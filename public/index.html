@@ -12,6 +12,7 @@
         <nav id="main-nav" style="display: none;">
              <button id="nav-servers" class="nav-button active">Servers</button>
              <button id="nav-tools" class="nav-button">Tools</button>
+             <button id="nav-terminal" class="nav-button">Terminal</button> <!-- Changed to button -->
              <button id="logout-button">Logout</button>
         </nav>
     </header>
@@ -63,6 +64,10 @@
         </div>
     </main>
 
-    <script src="script.js"></script> <!-- Single script file now -->
+    <!-- Load specific modules first -->
+    <script src="servers.js"></script>
+    <script src="tools.js"></script>
+    <!-- Load main script last -->
+    <script src="script.js"></script>
 </body>
 </html>

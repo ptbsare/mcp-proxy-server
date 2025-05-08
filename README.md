@@ -3,237 +3,226 @@
 ## ✨ Key Features Highlight
 
 *   **🌐 Web UI Management:** Easily manage all connected MCP servers through an intuitive web interface (optional, requires enabling).
-*   **🔧 Granular Tool Control:** Enable or disable individual tools provided by connected MCP servers via the Web UI.
-*   **🔒 Dual SSE Authentication:** Secure your SSE endpoint with flexible authentication options:
-    *   `Authorization: Bearer <token>`
-    *   `X-API-Key: <key>`
-An MCP proxy server that aggregates and serves multiple MCP resource servers through a single interface. This server acts as a central hub that can:
+*   **🔧 Granular Tool Control:** Enable or disable individual tools, and override display names/descriptions via the Web UI.
+*   **🔒 Dual SSE Authentication:** Secure your SSE endpoint with flexible authentication options (`Authorization: Bearer <token>` or `X-API-Key: <key>`).
+*   **🔄 Improved SSE Session Handling**: More robust handling of client reconnections, relying on server-sent `endpoint` events for session synchronization.
+*   **✨ Real-time Install Output**: Monitor Stdio server installation progress (stdout/stderr) directly in the Web UI.
+*   **✨ Web Terminal**: Access a command-line terminal within the Admin UI for direct server interaction (optional,  use with caution due to security risks).
 
-- Connect to and manage multiple MCP resource servers
-- Expose their combined capabilities through a unified interface
-- Handle routing of requests to appropriate backend servers
-- Aggregate responses from multiple sources
-- Supports multiple simultaneous SSE client connections
+---
+
+This server acts as a central hub for Model Context Protocol (MCP) resource servers. It can:
+
+- Connect to and manage multiple backend MCP servers (both Stdio and SSE types).
+- Expose their combined capabilities (tools, resources) through a single, unified SSE interface.
+- Handle routing of requests to the appropriate backend servers.
+- Aggregate responses if needed (though primarily acts as a proxy).
+- Support multiple simultaneous SSE client connections with optional API key authentication.
 
 ## Features
 
-### Resource Management
-- Discover and connect to multiple MCP resource servers
-- Aggregate resources from all connected servers
-- Maintain consistent URI schemes across servers
-- Handle resource routing and resolution
+### Resource & Tool Management via Proxy
+- Discovers and connects to multiple MCP resource servers defined in `config/mcp_server.json`.
+- Aggregates tools and resources from all connected *active* servers.
+- Routes tool calls and resource access requests to the correct backend server.
+- Maintains consistent URI schemes.
 
-### Tool Aggregation
-- Expose tools from all connected servers
-- Route tool calls to appropriate backend servers
-- Maintain tool state and handle responses
-
-### Prompt Handling
-- Aggregate prompts from all connected servers
-- Route prompt requests to appropriate backends
-- Handle multi-server prompt responses
+### ✨ Optional Web Admin UI (`ENABLE_ADMIN_UI=true`)
+Provides a browser-based interface for managing the proxy server configuration and connected tools. Features include:
+- **Server Configuration**: View, add, edit, and delete server entries (`mcp_server.json`). Supports both Stdio and SSE server types with relevant options (command, args, env, url, apiKey, bearerToken, install config).
+- **Tool Configuration**: View all tools discovered from active backend servers. Enable or disable specific tools. Override the display name and description for each tool (`tool_config.json`).
+- **Live Reload**: Apply server and tool configuration changes by triggering a configuration reload without needing to restart the entire proxy server process.
+- **Stdio Server Installation**: For Stdio servers, you can define installation commands in the configuration. The Admin UI allows you to:
+    - Trigger the execution of these installation commands.
+    - **Monitor installation progress in real-time** with live stdout and stderr output streamed directly to the UI.
+- **Web Terminal**: Access an integrated web-based terminal that provides shell access to the environment where the proxy server is running.
+    - **Security Warning**: This feature grants significant access and should be used with extreme caution, especially if the admin interface is exposed.
 
 ## Configuration
 
-The server requires a JSON configuration file named `mcp_server.json` located in the `config` subdirectory relative to the working directory (i.e., `./config/mcp_server.json`), specifying the MCP servers to connect to. A default empty configuration file is included.
+Configuration is primarily done via environment variables and JSON files located in the `./config` directory.
 
-Example `config/mcp_server.json` structure:
+### 1. Server Connections (`config/mcp_server.json`)
+This file defines the backend MCP servers the proxy should connect to.
+
+Example `config/mcp_server.json`:
 ```json
 {
   "mcpServers": {
-    "server1-name": {
-      "command": "/path/to/server1/executable",
-      "args": ["--optional-arg"],
+    "unique-server-key1": {
+      "name": "My Stdio Server",
+      "active": true,
+      "command": "/path/to/server/executable",
+      "args": ["--port", "1234"],
       "env": {
-        "API_KEY": "your_api_key_here"
-      }
+        "API_KEY": "server_specific_key"
+      },
+      "installDirectory": "/tools/unique-server-key1",
+      "installCommands": [
+        "git clone https://github.com/some/repo /tools/unique-server-key1",
+        "cd /tools/unique-server-key1 && npm install && npm run build"
+      ]
     },
-    "server2-stdio": {
-      "command": "server2-command"
+    "another-sse-server": {
+      "name": "My SSE Server",
+      "active": true,
+      "url": "http://localhost:8080/sse",
+      "apiKey": "sse_server_api_key"
     },
-    "server3-sse": {
-      "url": "http://localhost:8080/sse"
+    "disabled-server": {
+        "name": "Disabled Example",
+        "active": false,
+        "command": "echo 'This server is disabled'"
     }
   }
 }
 ```
 
--   `mcpServers`: An object where each key is a unique name for the server.
--   `command`: (Required for stdio) The command to execute the server.
--   `args`: (Optional for stdio) An array of arguments to pass to the command.
--   `env`: (Optional for stdio) An object of environment variables to set for the server process. These are merged with the proxy server's environment.
--   `url`: (Required for SSE) The URL for the Server-Sent Events endpoint.
--   `apiKey`: (Optional for SSE) An API key to send in the `X-Api-Key` header when connecting to this backend SSE server.
--   `bearerToken`: (Optional for SSE) A token to send in the `Authorization: Bearer <token>` header when connecting to this backend SSE server. (If both `apiKey` and `bearerToken` are provided, `bearerToken` takes precedence).
--   `installDirectory`: (Optional for stdio) The absolute path where the server should be installed. If omitted, it defaults to `/tools/<server_key>` inside the container/environment (used by the Admin UI install feature). Ensure the parent directory (e.g., `/tools`) is writable by the user running the proxy server if using the default.
--   `installCommands`: (Optional for stdio) An array of shell commands to execute sequentially for installing the server if `installDirectory` (or the default `/tools/<server_key>`) does not exist (used by the Admin UI install feature). Commands are executed from the project root. **Use with extreme caution due to security risks.**
+**Fields:**
+-   `mcpServers`: (Required) An object where each key is a unique identifier for a backend server.
+-   `name`: (Optional) A user-friendly display name for the server (used in Admin UI).
+-   `active`: (Optional, default: `true`) Set to `false` to prevent the proxy from connecting to this server.
+-   `command`: (Required for Stdio type) The command to execute the server process.
+-   `args`: (Optional for Stdio type) An array of string arguments to pass to the command.
+-   `env`: (Optional for Stdio type) An object of environment variables (`KEY: "value"`) to set for the server process. These are merged with the proxy server's environment.
+-   `url`: (Required for SSE type) The full URL of the backend server's SSE endpoint.
+-   `apiKey`: (Optional for SSE type) An API key to send in the `X-Api-Key` header when the proxy connects to *this specific backend* SSE server.
+-   `bearerToken`: (Optional for SSE type) A token to send in the `Authorization: Bearer <token>` header when connecting to *this specific backend* SSE server. (If both `apiKey` and `bearerToken` are provided, `bearerToken` takes precedence).
+-   `installDirectory`: (Optional for Stdio type) The absolute path where the server should be installed or is expected to be found. Used by the Admin UI's installation feature. If omitted, it defaults to `/tools/<server_key>` (relative to the container/environment root). Ensure the parent directory (e.g., `/tools`) is writable by the user running the proxy server if using the default and the install feature.
+-   `installCommands`: (Optional for Stdio type) An array of shell commands executed sequentially by the Admin UI's installation feature if the `installDirectory` does not exist. Commands are executed from the proxy server's working directory. **Use with extreme caution due to security risks.**
 
-The server reads `mcp_server.json` from the `config` subdirectory.
+### 2. Tool Configuration (`config/tool_config.json`)
+This file allows overriding properties of tools discovered from backend servers. It is primarily managed via the Admin UI but can be edited manually.
 
-### SSE Server Port
-
-The port on which the SSE server listens can be configured using the `PORT` environment variable. If this variable is not set, the server defaults to port `3663`.
-
-Example:
-```bash
-export PORT=8080
+Example `config/tool_config.json`:
+```json
+{
+  "tools": {
+    "unique-server-key1--tool-name-from-server": {
+      "enabled": true,
+      "displayName": "My Custom Tool Name",
+      "description": "A more user-friendly description."
+    },
+    "another-sse-server--another-tool": {
+      "enabled": false
+    }
+  }
+}
 ```
-### SSE Authentication (Optional)
+- Keys are in the format `<server_key>--<original_tool_name>`.
+- `enabled`: (Optional, default: `true`) Set to `false` to hide this tool from clients connecting to the proxy.
+- `displayName`: (Optional) Override the tool's name in client UIs.
+- `description`: (Optional) Override the tool's description.
 
-To secure the `/sse` endpoint, you can configure API key authentication using the `MCP_PROXY_SSE_ALLOWED_KEYS` environment variable.
+### 3. Environment Variables
 
-```bash
-export MCP_PROXY_SSE_ALLOWED_KEYS="key1,key2,another-secure-key"
-```
-
-- Set `MCP_PROXY_SSE_ALLOWED_KEYS` to a comma-separated list of allowed API keys.
-- If this variable is not set or is empty, authentication is disabled, and any client can connect to `/sse`.
-- Clients must provide one of the allowed keys either via the `X-API-Key` HTTP header or the `key` query parameter (e.g., `/sse?key=key1`).
-
-### Admin Web UI (Optional)
-
-An optional web-based UI is available for managing the `config/mcp_server.json` file directly through your browser.
-
-**Enabling the Admin UI:**
-
-Set the `ENABLE_ADMIN_UI` environment variable to `true`:
-
-```bash
-export ENABLE_ADMIN_UI=true
-```
-
-By default, the Admin UI is **disabled**.
-
-**Admin UI Configuration:**
-
-When enabled, the following environment variables are used:
-
--   `ADMIN_USERNAME`: The username for logging into the admin UI. (Default: `admin`)
--   `ADMIN_PASSWORD`: The password for logging into the admin UI. (Default: `password` - **Change this for security!**)
-
-Example:
-```bash
-export ADMIN_USERNAME=myadmin
-export ADMIN_PASSWORD=aVerySecurePassword
-```
-
-**Session Security:**
-
-The admin UI uses sessions secured by a secret key. This key is automatically generated and stored in `config/.session_secret` the first time the server runs with the admin UI enabled. **Do not commit this file to version control.** (`.gitignore` has been updated to exclude it). If this file is deleted, a new one will be generated, and all active admin sessions will be invalidated.
-
-**Accessing the Admin UI:**
-
-Once the server is running with `ENABLE_ADMIN_UI=true`, access the UI at `http://localhost:PORT/admin` (e.g., `http://localhost:3663/admin`). Log in using the configured `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
-
-**Security Warning:** The authentication provided is basic. This feature is intended for local development or use within a trusted network. **Do not expose the admin UI directly to the internet without implementing additional security measures (HTTPS, robust authentication, etc.).**
+-   **`PORT`**: Port for the proxy server's main SSE endpoint (and Admin UI if enabled). Default: `3663`.
+    ```bash
+    export PORT=8080
+    ```
+-   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (Optional) Comma-separated list of API keys to secure the proxy's main `/sse` endpoint. If not set, authentication is disabled. Clients must provide a key via `X-Api-Key` header or `?key=` query parameter.
+    ```bash
+    export MCP_PROXY_SSE_ALLOWED_KEYS="client_key1,client_key2"
+    ```
+-   **`ENABLE_ADMIN_UI`**: (Optional) Set to `true` to enable the Web Admin UI. Default: `false`.
+    ```bash
+    export ENABLE_ADMIN_UI=true
+    ```
+-   **`ADMIN_USERNAME`**: (Required if Admin UI enabled) Username for Admin UI login. Default: `admin`.
+-   **`ADMIN_PASSWORD`**: (Required if Admin UI enabled) Password for Admin UI login. Default: `password` (**Change this!**).
+    ```bash
+    export ADMIN_USERNAME=myadmin
+    export ADMIN_PASSWORD=aVerySecurePassword123!
+    ```
+-   **`SESSION_SECRET`**: (Optional, recommended if Admin UI enabled) Secret used to sign session cookies. If not set, a default, less secure secret is used, and a warning is issued. A secure secret is automatically generated and saved to `config/.session_secret` on first run if not provided via environment variable.
+    ```bash
+    # Recommended: Generate a strong secret (e.g., openssl rand -hex 32)
+    export SESSION_SECRET='your_very_strong_random_secret_here'
+    ```
 
 ## Development
 
-Install dependencies (uses `@modelcontextprotocol/sdk` v1.11.0 or later):
+Install dependencies:
 ```bash
 npm install
+# or yarn install
 ```
 
-Build the server:
+Build the server (compiles TypeScript to JavaScript in `build/`):
 ```bash
 npm run build
 ```
 
-For development with auto-rebuild:
+Run in development mode (uses `tsx` for direct TS execution with auto-restart on changes):
+```bash
+# For the main proxy server (usually connects to stdio backends)
+npm run dev
+
+# For the SSE-only server variant (if needed, uses src/sse.ts entry point)
+# Ensure environment variables (PORT, ENABLE_ADMIN_UI etc.) are set as needed
+ENABLE_ADMIN_UI=true npm run dev:sse
+```
+
+Watch for changes and rebuild automatically (useful if not using `tsx`):
 ```bash
 npm run watch
 ```
 
-For development with continuous run:
-```bash
-# Stdio
-npm run dev
-# SSE
-npm run dev:sse
-```
-
 ## Running with Docker
 
-A `Dockerfile` is provided to build a container image for the proxy server.
+A `Dockerfile` is provided which includes `node-pty`.
 
 **Building the Image:**
-
 ```bash
 docker build -t mcp-proxy-server .
 ```
 
-**Running the Container (Building Locally):**
-
-If you built the image locally, you need to mount volumes for the configuration and any external tools:
+**Running the Container:**
+Mount your configuration directory and optionally a tools directory. Set environment variables as needed.
 
 ```bash
 docker run -d \
   -p 3663:3663 \
-  -v ./path/to/your/config:/mcp-proxy-server/config \
-  -v ./path/to/your/tools:/tools \
-  --name mcp-proxy-server \
+  -e PORT=3663 \
+  -e ENABLE_ADMIN_UI=true \
+  -e ADMIN_USERNAME=myadmin \
+  -e ADMIN_PASSWORD=yoursupersecretpassword \
+  -e MCP_PROXY_SSE_ALLOWED_KEYS="clientkey1" \
+  -v ./my_config:/app/config \
+  -v /path/on/host/to/tools:/tools \
+  --name mcp-proxy \
   mcp-proxy-server
 ```
+- Replace `./my_config` with your host path containing `mcp_server.json` and optionally `tool_config.json`. The container expects config files in `/app/config`.
+- Replace `/path/on/host/to/tools` if your Stdio servers require access to executables mounted at `/tools` inside the container.
+- The image includes `node-pty` by default.
 
-- Replace `./path/to/your/config` with the path to a directory on your host machine containing your `mcp_server.json` file. The container expects the file at `/mcp-proxy-server/config/mcp_server.json`.
-- Replace `./path/to/your/tools` with the path to a directory containing executables or scripts for any external MCP servers you reference in your config using absolute paths like `/tools/my-server/run.sh`.
-- You can pass environment variables like `MCP_PROXY_SSE_ALLOWED_KEYS` using the `-e` flag (e.g., `-e MCP_PROXY_SSE_ALLOWED_KEYS="key1,key2"`).
+## Installation & Usage with Clients
 
-**Using the Pre-built Image (from GHCR):**
+Configure your MCP client (like Claude Desktop, VS Code extensions, etc.) to connect to the proxy server's SSE endpoint (e.g., `http://localhost:3663/sse`). If you enabled API key authentication, provide one of the allowed keys in the client configuration (usually via `apiKey` or headers).
 
-Alternatively, you can pull the pre-built image directly from the GitHub Container Registry:
-
-```bash
-# Pull the latest image
-docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
-
-# Or pull a specific version (e.g., v0.1.0)
-# docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:v0.1.0
-```
-
-Then, run the container using the pulled image name:
-
-```bash
-docker run -d \
-  -p 3663:3663 \
-  -v ./path/to/your/config:/mcp-proxy-server/config \
-  -v ./path/to/your/tools:/tools \
-  --name mcp-proxy-server \
-  ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
-```
-
-- Remember to replace `./path/to/your/config` and `./path/to/your/tools` with your actual host paths.
-- Adjust the tag (`:latest`) if you pulled a specific version.
-- Pass environment variables using the `-e` flag as needed.
-
-## Installation
-
-To use with Claude Desktop, add the server config:
-
-On MacOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
-
+Example for Claude Desktop (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "mcp-proxy-server": {
-      "command": "/path/to/mcp-proxy-server/build/index.js",
-      "env": {}
+    "my-proxy": {
+      "name": "MCP Proxy",
+      "url": "http://localhost:3663/sse",
+      "apiKey": "clientkey1"
     }
   }
 }
 ```
+*(Note: The original README section about installing the proxy *as* a backend server seems less relevant now, as the primary use case is running the proxy and having clients connect *to* it. The above example shows how a client connects.)*
 
-### Debugging
+## Debugging
 
-Since MCP servers communicate over stdio, debugging can be challenging. We recommend using the [MCP Inspector](https://github.com/modelcontextprotocol/inspector), which is available as a package script:
-
+Use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) for debugging communication:
 ```bash
 npm run inspector
 ```
+This script wraps the execution of the built server (`build/index.js`) with the inspector. Access the inspector UI via the URL provided in the console output.
 
-The Inspector will provide a URL to access debugging tools in your browser.
+## Reference
 
-## Referrance
-
-Rewrite from (https://github.com/ycjcl868/mcp-proxy-server)
+This project was originally inspired by and refactored from [ycjcl868/mcp-proxy-server](https://github.com/ycjcl868/mcp-proxy-server).
