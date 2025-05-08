@@ -18,7 +18,7 @@
 本服务器作为模型上下文协议 (MCP) 资源服务器的中心枢纽。它可以：
 
 - 连接并管理多个后端的 MCP 服务器（支持 Stdio 和 SSE 类型）。
-- 通过统一的 SSE 接口暴露它们组合后的能力（工具、资源）。
+- 通过统一的 SSE 接口暴露它们组合后的能力（工具、资源），**或者**本身作为一个基于 Stdio 的 MCP 服务器运行。
 - 处理将请求路由到合适的后端服务器。
 - 在需要时聚合来自多个来源的响应（主要作为代理）。
 - 支持多个并发的 SSE 客户端连接，并提供可选的 API 密钥认证。
@@ -120,15 +120,15 @@
 
 ### 3. 环境变量
 
--   **`PORT`**: 代理服务器主 SSE 端点（以及 Admin UI，如果启用）监听的端口。默认: `3663`。
+-   **`PORT`**: 代理服务器主 SSE 端点（以及 Admin UI，如果启用）监听的端口。默认: `3663`。**注意：** 仅在以 SSE 模式运行时（例如，通过 `npm run dev:sse` 或 Docker 容器）使用。`npm run dev` 脚本以 Stdio 模式运行。
     ```bash
     export PORT=8080
     ```
--   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (可选) 用于保护代理主 `/sse` 端点的 API 密钥列表（逗号分隔）。如果未设置，则禁用认证。客户端必须通过 `X-Api-Key` 头部或 `?key=` 查询参数提供其中一个密钥。
+-   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (可选) 用于保护代理主 `/sse` 端点的 API 密钥列表（逗号分隔，仅在 SSE 模式下生效）。如果未设置，则禁用认证。客户端必须通过 `X-Api-Key` 头部或 `?key=` 查询参数提供其中一个密钥。
     ```bash
     export MCP_PROXY_SSE_ALLOWED_KEYS="client_key1,client_key2"
     ```
--   **`ENABLE_ADMIN_UI`**: (可选) 设置为 `true` 以启用 Web Admin UI。默认: `false`。
+-   **`ENABLE_ADMIN_UI`**: (可选) 设置为 `true` 以启用 Web Admin UI（仅在 SSE 模式下生效）。默认: `false`。
     ```bash
     export ENABLE_ADMIN_UI=true
     ```
@@ -144,13 +144,9 @@
     export SESSION_SECRET='your_very_strong_random_secret_here'
     ```
 
-### 4. 依赖说明
-
--   **`node-pty`**: 可选的网页终端功能依赖此包。它已作为依赖项包含在 `package.json` 中，并包含在默认的 Docker 镜像中。对于本地开发 (`npm run dev` 或 `npm run dev:sse`)，请确保 `npm install` 成功完成。`node-pty` 会编译原生插件，这可能需要在您的开发机器上安装构建工具（如 C++ 编译器、Python）。如果您不启用 Admin UI 或不打算使用网页终端，则在运行时严格来说不需要此依赖（尽管默认会安装）。
-
 ## 开发
 
-安装依赖 (包含 `node-pty`):
+安装依赖:
 ```bash
 npm install
 # 或 yarn install
@@ -163,10 +159,10 @@ npm run build
 
 在开发模式下运行 (使用 `tsx` 直接执行 TS 文件，并在文件更改时自动重启):
 ```bash
-# 运行主代理服务器 (通常连接 stdio 后端)
+# 以 Stdio MCP 服务器模式运行 (默认模式)
 npm run dev
 
-# 运行仅 SSE 的服务器变体 (如果需要，使用 src/sse.ts 入口点)
+# 以 SSE MCP 服务器模式运行 (启用 SSE 端点和 Admin UI，如果配置了)
 # 确保按需设置环境变量 (PORT, ENABLE_ADMIN_UI 等)
 ENABLE_ADMIN_UI=true npm run dev:sse
 ```
@@ -178,15 +174,21 @@ npm run watch
 
 ## 使用 Docker 运行
 
-项目提供了包含 `node-pty` 的 `Dockerfile`。
+项目提供了 `Dockerfile`。容器默认以 **SSE 模式** 运行 (使用 `build/sse.js`) 并包含所有依赖项。
 
-**构建镜像:**
+**推荐：使用预构建镜像 (来自 GHCR)**
+
+建议使用 GitHub Container Registry 上的预构建镜像以便于设置。
+
 ```bash
-docker build -t mcp-proxy-server .
+# 拉取最新镜像
+docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
+
+# 或拉取特定版本 (例如 v0.1.0)
+# docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:v0.1.0
 ```
 
-**运行容器:**
-挂载您的配置目录，并可选地挂载工具目录。按需设置环境变量。
+然后，使用拉取的镜像名称运行容器：
 
 ```bash
 docker run -d \
@@ -199,37 +201,65 @@ docker run -d \
   -v ./my_config:/app/config \
   -v /path/on/host/to/tools:/tools \
   --name mcp-proxy \
-  mcp-proxy-server
+  ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
 ```
 - 将 `./my_config` 替换为您宿主机上包含 `mcp_server.json` 和可选的 `tool_config.json` 的目录路径。容器期望配置文件位于 `/app/config`。
 - 如果您的 Stdio 服务器需要访问挂载到容器内 `/tools` 的可执行文件，请替换 `/path/on/host/to/tools`。
-- 镜像默认包含 `node-pty`。
+- 如果您拉取了特定版本，请调整标签 (`:latest`)。
+- 按需使用 `-e` 标志设置环境变量。
+
+**本地构建镜像 (可选):**
+```bash
+docker build -t mcp-proxy-server .
+```
+*(如果您在本地构建，请在上面的 `docker run` 命令中使用 `mcp-proxy-server` 替代 `ghcr.io/...` 镜像名称)。*
 
 ## 安装与客户端使用
 
-配置您的 MCP 客户端（如 Claude Desktop、VS Code 扩展等）连接到代理服务器的 SSE 端点（例如 `http://localhost:3663/sse`）。如果您启用了 API 密钥认证，请在客户端配置中提供允许的密钥之一（通常通过 `apiKey` 字段或请求头）。
+此代理服务器主要有两种使用方式：
 
-Claude Desktop 示例 (`claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "my-proxy": {
-      "name": "MCP 代理",
-      "url": "http://localhost:3663/sse",
-      "apiKey": "clientkey1"
-    }
-  }
-}
-```
-*(注意: 原 README 中关于将代理安装为后端服务器的部分似乎不太相关，因为主要用例是运行代理并让客户端连接到它。以上示例展示了客户端如何连接。)*
+**1. 作为 Stdio MCP 服务器:**
+   配置您的 MCP 客户端（如 Claude Desktop）直接运行此代理服务器。代理将连接到其 `config/mcp_server.json` 中定义的后端服务器。
+
+   Claude Desktop 示例 (`claude_desktop_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "mcp-proxy": {
+         "name": "MCP 代理 (聚合器)",
+         "command": "/path/to/mcp-proxy-server/build/index.js",
+         "env": {
+            "NODE_ENV": "production" // 可选: 为代理本身设置环境变量
+         }
+       }
+     }
+   }
+   ```
+   - 将 `/path/to/mcp-proxy-server/build/index.js` 替换为此代理服务器项目构建后的实际入口点路径。确保 `config` 目录相对于命令运行的位置是正确的，或者在代理自己的配置中使用绝对路径。
+
+**2. 作为 SSE MCP 服务器:**
+   以 SSE 模式运行代理服务器（例如 `npm run dev:sse` 或 Docker 容器）。然后，配置您的 MCP 客户端连接到代理的 SSE 端点（例如 `http://localhost:3663/sse`）。如果代理启用了 API 密钥认证，请在客户端配置中提供密钥。
+
+   Claude Desktop 示例 (`claude_desktop_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "my-proxy-sse": {
+         "name": "MCP 代理 (SSE)",
+         "url": "http://localhost:3663/sse",
+         "apiKey": "clientkey1" // 在 MCP_PROXY_SSE_ALLOWED_KEYS 中定义的密钥
+       }
+     }
+   }
+   ```
 
 ## 调试
 
-使用 [MCP Inspector](https://github.com/modelcontextprotocol/inspector) 进行通信调试：
+使用 [MCP Inspector](https://github.com/modelcontextprotocol/inspector) 进行通信调试（主要用于 Stdio 模式）：
 ```bash
 npm run inspector
 ```
-此脚本会使用 inspector 包装已构建的服务器 (`build/index.js`) 来执行。通过控制台中提供的 URL 访问 inspector UI。
+此脚本会使用 inspector 包装已构建的服务器 (`build/index.js`) 来执行。通过控制台中提供的 URL 访问 inspector UI。对于 SSE 模式，可以使用标准的浏览器开发者工具检查网络请求。
 
 ## 参考
 
