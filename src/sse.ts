@@ -447,25 +447,8 @@ app.get("/sse", async (req, res) => {
   }
 });
 
-// Handler for GET /message?action=new_session to allow clients to refresh session IDs
-app.get("/message", (req, res) => {
-  const clientId = req.ip || `client-${Date.now()}`; // For logging
-  if (req.query.action === 'new_session') {
-    try {
-      // Generate a new session ID using crypto.randomUUID()
-      const newSessionId = crypto.randomUUID();
-      console.log(`[${clientId}] Generated new session_id via GET /message?action=new_session: ${newSessionId}`);
-      res.json({ session_id: newSessionId });
-    } catch (e) {
-      console.error(`[${clientId}] Error generating new session_id:`, e);
-      res.status(500).json({ error: "Failed to generate new session ID" });
-    }
-  } else {
-    // If it's a GET request to /message without action=new_session, it's not a defined endpoint.
-    console.log(`[${clientId}] Received GET /message without action=new_session. Path: ${req.path}, Query: ${JSON.stringify(req.query)}`);
-    res.status(405).json({ error: "Method Not Allowed for GET /message. Use action=new_session for new session ID, or POST for messages." });
-  }
-});
+// Removed GET /message?action=new_session endpoint as it's deemed unnecessary.
+// The client should rely on the sessionId provided by the 'endpoint' event from the /sse connection.
 
 app.post("/message", async (req, res) => {
   const sessionId = req.query.sessionId as string;
