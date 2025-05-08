@@ -238,7 +238,7 @@ docker build -t mcp-proxy-server .
    - 将 `/path/to/mcp-proxy-server/build/index.js` 替换为此代理服务器项目构建后的实际入口点路径。确保 `config` 目录相对于命令运行的位置是正确的，或者在代理自己的配置中使用绝对路径。
 
 **2. 作为 SSE MCP 服务器:**
-   以 SSE 模式运行代理服务器（例如 `npm run dev:sse` 或 Docker 容器）。然后，配置您的 MCP 客户端连接到代理的 SSE 端点（例如 `http://localhost:3663/sse`）。如果代理启用了 API 密钥认证，请在客户端配置中提供密钥。
+   以 SSE 模式运行代理服务器（例如 `npm run dev:sse` 或 Docker 容器）。然后，配置您的 MCP 客户端连接到代理的 SSE 端点（例如 `http://localhost:3663/sse`）。如果代理启用了 API 密钥认证 (`MCP_PROXY_SSE_ALLOWED_KEYS`)，请在客户端配置中提供密钥，为了更好的兼容性，建议通过 URL 查询参数 `?key=...` 提供。
 
    Claude Desktop 示例 (`claude_desktop_config.json`):
    ```json
@@ -246,8 +246,10 @@ docker build -t mcp-proxy-server .
      "mcpServers": {
        "my-proxy-sse": {
          "name": "MCP 代理 (SSE)",
-         "url": "http://localhost:3663/sse",
-         "apiKey": "clientkey1" // 在 MCP_PROXY_SSE_ALLOWED_KEYS 中定义的密钥
+         // 如果启用了认证，请附加 ?key=<your_key>
+         "url": "http://localhost:3663/sse?key=clientkey1"
+         // apiKey 字段可能不被所有客户端支持用于 SSE 认证
+         // "apiKey": "clientkey1"
        }
      }
    }
