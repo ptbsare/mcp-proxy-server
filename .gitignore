@@ -12,4 +12,3 @@ browser-*
 chatmcp
 typescript-sdk
 tools/**
-!tools/
