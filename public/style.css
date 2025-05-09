@@ -9,32 +9,65 @@ body {
 header {
     background-color: #343a40;
     color: white;
-    padding: 1rem 2rem;
+    padding: 0.75rem 2rem; /* Adjusted padding */
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column; /* Stack top row and nav row */
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-header h1 {
+.header-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding-bottom: 0.5rem; /* Space before nav links if they are present */
+}
+
+header .header-top-row h1 {
     margin: 0;
     font-size: 1.5rem;
-    border-bottom: none; /* Remove border from header h1 */
+    border-bottom: none;
     padding-bottom: 0;
 }
 
-nav#main-nav button, nav#main-nav a.nav-button { /* Apply to buttons and <a> tags with nav-button class */
+.header-top-row #logout-button {
+    background-color: #dc3545;
+    color: white;
+    padding: 0.5rem 1rem; /* Ensure padding is consistent */
+    margin-left: 1rem; /* Space from other elements if any */
+    /* Resetting margins that might be inherited from general button style */
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: 0; /* No right margin if it's the last item */
+}
+.header-top-row #logout-button:hover {
+    background-color: #c82333;
+}
+
+
+nav#main-nav {
+    /* display: flex; /* This will be set by JS when user logs in */
+    flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+    justify-content: flex-start; /* Align items to the start */
+    width: 100%;
+    padding-top: 0.5rem; /* Space from top row */
+    border-top: 1px solid #495057; /* Optional separator */
+}
+
+nav#main-nav button, nav#main-nav a.nav-button { /* Target buttons and a tags with .nav-button */
     background: none;
     border: none;
     color: #adb5bd;
     padding: 0.5rem 1rem;
-    margin-left: 0.5rem;
+    margin-right: 0.75rem; /* Spacing between buttons */
+    margin-bottom: 0.5rem; /* Spacing if buttons wrap */
+    margin-left: 0; /* Remove individual left margin */
     cursor: pointer;
     font-size: 1rem;
     border-radius: 4px;
     transition: background-color 0.2s ease, color 0.2s ease;
-    text-decoration: none; /* For <a> tags */
-    display: inline-flex; /* For alignment */
+    text-decoration: none; 
+    display: inline-flex; 
     align-items: center;
 }
 
@@ -43,19 +76,15 @@ nav#main-nav button:hover, nav#main-nav a.nav-button:hover {
     background-color: #495057;
 }
 
-nav#main-nav button.active, nav#main-nav a.nav-button.active {
+nav#main-nav button.active, nav#main-nav a.nav-button.active { /* Ensure .active applies to <a> too */
     color: white;
     font-weight: bold;
-    background-color: #007bff; /* Highlight active nav button */
+    background-color: #007bff; 
 }
 
-nav#main-nav button#logout-button {
-    background-color: #dc3545;
-    color: white;
-}
-nav#main-nav button#logout-button:hover {
-    background-color: #c82333;
-}
+/* Remove logout button specific styles from nav#main-nav as it's moved */
+/* nav#main-nav button#logout-button { ... } */
+/* nav#main-nav button#logout-button:hover { ... } */
 
 
 main#main-content {
@@ -73,7 +102,7 @@ main#main-content {
 
 /* Limit width and center login section on larger screens */
 #login-section {
-    max-width: 450px; /* Adjust as needed */
+    max-width: 450px; 
     margin-left: auto;
     margin-right: auto;
 }
@@ -100,7 +129,7 @@ input[type="url"],
 input[type="number"],
 textarea {
     width: 100%;
-    box-sizing: border-box; /* Include padding and border in element's total width/height */
+    box-sizing: border-box; 
     padding: 0.5rem 0.75rem;
     margin-bottom: 1rem;
     border: 1px solid #ced4da;
@@ -117,11 +146,11 @@ input:focus, textarea:focus {
 textarea {
     min-height: 60px;
     resize: vertical;
-    font-family: monospace; /* Good for JSON */
+    font-family: monospace; 
 }
 
 /* General button styling */
-button, .add-button { /* Include .add-button for consistency */
+button, .add-button { 
     display: inline-block;
     font-weight: 400;
     color: #fff;
@@ -161,7 +190,7 @@ button:disabled, .add-button:disabled {
 }
 
 /* Specific button overrides if needed */
-.add-button { /* Generalize add button style */
+.add-button { 
     background-color: #28a745;
     border-color: #28a745;
 }
@@ -196,64 +225,62 @@ button:disabled, .add-button:disabled {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem; /* Add some space before details */
+    margin-bottom: 1rem; 
 }
 
 .server-entry .server-header h3 {
-    margin: 0; /* Remove default margin */
-    color: #007bff; /* Make header stand out */
+    margin: 0; 
+    color: #007bff; 
     cursor: pointer;
-    flex-grow: 1; /* Allow title to take available space */
-    padding-right: 1rem; /* Space before delete button */
+    flex-grow: 1; 
+    padding-right: 1rem; 
 }
 .server-entry .server-header h3:hover {
     text-decoration: underline;
 }
 
 .server-entry .server-details {
-    /* Styles for the container of the details */
-    padding-left: 1rem; /* Indent details slightly */
+    padding-left: 1rem; 
     border-left: 2px solid #e9ecef;
-    transition: max-height 0.3s ease-out, opacity 0.3s ease-out; /* Smooth transition */
-    overflow: hidden; /* Needed for max-height transition */
-    max-height: 2000px; /* Set a large max-height for expanded state */
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out; 
+    overflow: hidden; 
+    max-height: 2000px; 
     opacity: 1;
 }
 
 .server-entry.collapsed .server-details {
-    max-height: 0; /* Collapse smoothly */
+    max-height: 0; 
     opacity: 0;
-    padding-left: 1rem; /* Keep padding during collapse */
-    border-left: 2px solid #e9ecef; /* Keep border during collapse */
-    margin-top: 0; /* Remove margin when collapsed */
+    padding-left: 1rem; 
+    border-left: 2px solid #e9ecef; 
+    margin-top: 0; 
     overflow: hidden;
 }
 
 
 .server-entry label, .tool-entry label {
-    font-weight: 500; /* Slightly bolder labels */
+    font-weight: 500; 
     color: #495057;
     margin-bottom: 0.25rem;
-    display: block; /* Ensure labels take full width */
+    display: block; 
 }
-/* Specific style for inline checkbox labels */
 .server-entry label.inline-label {
     display: inline-flex;
     align-items: center;
-    width: auto; /* Don't take full width */
-    margin-bottom: 1rem; /* Add back bottom margin */
+    width: auto; 
+    margin-bottom: 1rem; 
 }
 
 .server-entry input[type="checkbox"], .tool-entry input[type="checkbox"] {
     margin-right: 0.5rem;
     vertical-align: middle;
-    width: auto; /* Override full width for checkboxes */
-    margin-bottom: 0; /* Override margin */
+    width: auto; 
+    margin-bottom: 0; 
 }
-.tool-entry label { /* Make tool label clickable for checkbox */
-    display: inline-flex; /* Align checkbox and text */
+.tool-entry label { 
+    display: inline-flex; 
     align-items: center;
-    font-weight: normal; /* Normal weight for tool label */
+    font-weight: normal; 
     width: 100%;
 }
 .tool-entry label strong {
@@ -315,8 +342,8 @@ hr {
 .env-vars-container {
     margin-top: 5px;
     margin-bottom: 10px;
-    padding-left: 15px; /* Indent slightly */
-    border-left: 2px solid #eee; /* Visual cue */
+    padding-left: 15px; 
+    border-left: 2px solid #eee; 
 }
 
 .env-var-row {
@@ -328,8 +355,8 @@ hr {
 .env-var-row input[type="text"] {
     flex-grow: 1;
     margin: 0 5px;
-    padding: 4px 6px; /* Smaller padding */
-    font-size: 0.9em; /* Slightly smaller font */
+    padding: 4px 6px; 
+    font-size: 0.9em; 
 }
 
 .env-var-row span {
@@ -337,7 +364,7 @@ hr {
 }
 
 .env-var-row .env-key-input {
-    max-width: 150px; /* Limit key width */
+    max-width: 150px; 
 }
 
 /* Separate styles for add and delete env var buttons */
@@ -345,29 +372,29 @@ hr {
     padding: 3px 8px;
     font-size: 0.9em;
     cursor: pointer;
-    border: 1px solid #f5c6cb; /* Match background */
-    background-color: #f8d7da; /* Light red */
+    border: 1px solid #f5c6cb; 
+    background-color: #f8d7da; 
     color: #721c24;
     border-radius: 3px;
     margin-left: 5px;
 }
 
 .add-env-var-button {
-    padding: 3px 8px; /* Keep smaller padding */
-    font-size: 0.9em; /* Keep smaller font */
+    padding: 3px 8px; 
+    font-size: 0.9em; 
     cursor: pointer;
-    border: 1px solid #007bff; /* Blue border */
-    background-color: #007bff; /* Blue background */
-    color: #fff; /* White text */
+    border: 1px solid #007bff; 
+    background-color: #007bff; 
+    color: #fff; 
     border-radius: 3px;
-    margin-left: 0; /* Align with inputs */
-    margin-top: 5px; /* Space above add button */
-    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out; /* Add transition */
+    margin-left: 0; 
+    margin-top: 5px; 
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out; 
 }
 
 /* Keep delete button styles */
 .delete-env-var-button {
-    background-color: #f8d7da; /* Light red */
+    background-color: #f8d7da; 
     border-color: #f5c6cb;
     color: #721c24;
 }
@@ -377,35 +404,35 @@ hr {
 }
 
 .add-env-var-button:hover {
-    background-color: #0056b3; /* Darker blue on hover */
+    background-color: #0056b3; 
     border-color: #0056b3;
 }
 
 /* Modal Styles */
 .modal {
-    position: fixed; /* Stay in place */
-    z-index: 1000; /* Sit on top */
+    position: fixed; 
+    z-index: 1000; 
     left: 0;
     top: 0;
-    width: 100%; /* Full width */
-    height: 100%; /* Full height */
-    overflow: auto; /* Enable scroll if needed */
-    background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
-    display: flex; /* Used to center the modal content */
-    align-items: center; /* Vertical centering */
-    justify-content: center; /* Horizontal centering */
+    width: 100%; 
+    height: 100%; 
+    overflow: auto; 
+    background-color: rgba(0,0,0,0.6); 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
 }
 
 .modal-content {
     background-color: #fefefe;
-    margin: auto; /* Auto margins for centering, works with flex too */
+    margin: auto; 
     padding: 25px;
     border: 1px solid #888;
-    width: 80%; /* Could be more or less, depending on screen size */
-    max-width: 700px; /* Maximum width */
+    width: 80%; 
+    max-width: 700px; 
     border-radius: 8px;
     box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
-    position: relative; /* For positioning the close button */
+    position: relative; 
 }
 
 .modal-content h2 {
@@ -415,7 +442,7 @@ hr {
 }
 
 .modal-content textarea {
-    width: calc(100% - 20px); /* Adjust for padding */
+    width: calc(100% - 20px); 
     min-height: 200px;
     margin-bottom: 15px;
     font-family: monospace;
@@ -425,10 +452,10 @@ hr {
 
 .close-button {
     color: #aaa;
-    float: right; /* Position to the right */
+    float: right; 
     font-size: 28px;
     font-weight: bold;
-    position: absolute; /* Position relative to modal-content */
+    position: absolute; 
     top: 10px;
     right: 20px;
 }
@@ -441,7 +468,7 @@ hr {
 }
 
 .modal-actions {
-    text-align: right; /* Align buttons to the right */
+    text-align: right; 
     margin-top: 15px;
 }
 
@@ -449,7 +476,7 @@ hr {
     margin-left: 10px;
 }
 
-.modal-actions button[type="button"] { /* Cancel button style */
+.modal-actions button[type="button"] { 
     background-color: #6c757d;
     border-color: #6c757d;
 }
@@ -469,5 +496,24 @@ hr {
     }
     .modal-content textarea {
         min-height: 150px;
+    }
+    header {
+        padding: 0.75rem 1rem; /* Adjust header padding for smaller screens */
+    }
+    .header-top-row {
+        flex-direction: column; /* Stack title and logout on small screens */
+        align-items: flex-start;
+    }
+    .header-top-row #logout-button {
+        margin-left: 0;
+        margin-top: 0.5rem; /* Add some space below title */
+        align-self: flex-start; /* Align to start */
+    }
+    nav#main-nav {
+        justify-content: center; /* Center nav buttons on small screens */
+        padding-top: 0.75rem;
+    }
+    nav#main-nav button, nav#main-nav a.nav-button {
+        margin: 0.25rem; /* Adjust margins for wrapped buttons */
     }
 }
