@@ -280,4 +280,4 @@ npm run inspector
 
 ## 参考
 
-本项目最初受到 [ycjcl868/mcp-proxy-server](https://github.com/ycjcl868/mcp-proxy-server) 的启发并基于其进行了重构。
+本项目最初受到 [adamwattis/mcp-proxy-server](https://github.com/adamwattis/mcp-proxy-server) 的启发并基于其进行了重构。
