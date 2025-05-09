@@ -1,22 +1,23 @@
 // --- DOM Elements (Assumed to be globally accessible or passed) ---
 const serverListDiv = document.getElementById('server-list');
-const saveConfigButton = document.getElementById('save-config-button');
-// const saveStatus = document.getElementById('save-status'); // Declared in script.js
-// Note: Assumes elements like add-stdio-server-button, add-sse-server-button are handled in script.js.
-// Note: Assumes triggerReload, currentServerConfig, connectAdminSSE, appendToInstallOutput, getInstallOutputElement, effectiveToolsFolder are globally accessible from script.js
+// saveConfigButton and saveStatus are obtained within initializeServerSaveListener
 
 // --- Server Configuration Management ---
 async function loadServerConfig() {
     const localSaveStatus = document.getElementById('save-status'); 
-    if (!localSaveStatus || !serverListDiv) return; 
+    if (!localSaveStatus || !serverListDiv) {
+        console.error("loadServerConfig: Missing essential DOM elements (saveStatus or serverListDiv).");
+        return; 
+    }
     localSaveStatus.textContent = 'Loading server configuration...';
     try {
         const response = await fetch('/admin/config');
-        if (!response.ok) throw new Error(`Failed to fetch server config: ${response.statusText}`);
+        if (!response.ok) throw new Error(`Failed to fetch server config: ${response.status} ${response.statusText}`);
         window.currentServerConfig = await response.json(); 
         renderServerConfig(window.currentServerConfig);
-        addInstallButtonListeners(); 
+        // addInstallButtonListeners is called within renderServerConfig after rendering all entries
         localSaveStatus.textContent = 'Server configuration loaded.';
+        window.isServerConfigDirty = false; // Reset dirty flag after successful load
         setTimeout(() => { if(localSaveStatus) localSaveStatus.textContent = ''; }, 3000);
     } catch (error) {
         console.error("Error loading server config:", error);
@@ -36,7 +37,7 @@ function renderServerConfig(config) {
     Object.keys(servers).sort().forEach(key => {
          renderServerEntry(key, servers[key]);
     });
-     addInstallButtonListeners();
+     addInstallButtonListeners(); // Ensure listeners are (re-)added after full render
 }
 
 function renderServerEntry(key, serverConf, startExpanded = false) {
@@ -117,7 +118,10 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
 
     const addEnvVarButton = detailsDiv.querySelector('.add-env-var-button');
     if (addEnvVarButton) {
-        addEnvVarButton.addEventListener('click', () => addEnvVarRow(envVarsContainer));
+        addEnvVarButton.addEventListener('click', () => {
+            addEnvVarRow(envVarsContainer);
+            window.isServerConfigDirty = true;
+        });
     }
 
     headerDiv.querySelector('h3').addEventListener('click', () => entryDiv.classList.toggle('collapsed'));
@@ -127,6 +131,7 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
         e.stopPropagation();
         if (confirm(`Are you sure you want to delete server "${serverConf.name || key}"?`)) {
             entryDiv.remove();
+            window.isServerConfigDirty = true; 
         }
     });
 
@@ -138,6 +143,7 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
                  const hasDir = !!installDirInputForButton.value.trim();
                  installButton.disabled = !hasDir;
                  installButton.title = installButton.disabled ? 'Install directory must be set to enable install button' : '';
+                 window.isServerConfigDirty = true; 
              });
         }
     }
@@ -146,6 +152,7 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
     const installDirInput = detailsDiv.querySelector('.server-install-dir-input');
     if (isStdio && keyInput && installDirInput) {
         keyInput.addEventListener('input', () => {
+            window.isServerConfigDirty = true; 
             const currentKey = keyInput.value.trim();
             const currentInstallDir = installDirInput.value.trim();
             
@@ -160,21 +167,25 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
            }
         });
     }
+    
+    detailsDiv.querySelectorAll('input, textarea').forEach(input => {
+        input.addEventListener('input', () => { window.isServerConfigDirty = true; });
+    });
+    detailsDiv.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.addEventListener('change', () => { window.isServerConfigDirty = true; });
+    });
 
     serverListDiv.appendChild(entryDiv);
 }
 
 function addInstallButtonListeners() {
     document.querySelectorAll('.install-button').forEach(button => {
-        const newButton = button.cloneNode(true); // Clone to remove old listeners
+        const newButton = button.cloneNode(true); 
         button.parentNode.replaceChild(newButton, button);
         newButton.addEventListener('click', () => {
             const serverKey = newButton.dataset.serverKey;
             if (serverKey) {
-                // Directly call handleInstallClick if it's defined in this file's scope
-                // or ensure it's correctly exposed on window if called from elsewhere.
-                // Since handleInstallClick is in this file, direct call is fine.
-                handleInstallClick(serverKey); 
+                handleInstallClick(serverKey); // Direct call to function in this file
             } else {
                 console.error("Install button clicked but serverKey is missing.");
             }
@@ -192,11 +203,22 @@ function addEnvVarRow(container, key = '', value = '') {
         <input type="text" class="env-value-input" placeholder="Value" value="${value}">
         <button type="button" class="delete-env-var-button">X</button>
     `;
-    rowDiv.querySelector('.delete-env-var-button').addEventListener('click', () => rowDiv.remove());
+    rowDiv.querySelector('.delete-env-var-button').addEventListener('click', () => {
+        rowDiv.remove();
+        window.isServerConfigDirty = true; 
+    });
+    rowDiv.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', () => { window.isServerConfigDirty = true; });
+    });
     container.appendChild(rowDiv);
 }
 
 async function handleInstallClick(serverKey) {
+    if (window.isServerConfigDirty === true) { // Explicitly check for true
+        alert("Configuration has unsaved changes. Please save the server configuration before installing.");
+        return;
+    }
+
     const installButton = document.querySelector(`.install-button[data-server-key="${serverKey}"]`);
     const outputElement = window.getInstallOutputElement ? window.getInstallOutputElement(serverKey) : document.getElementById(`install-output-${serverKey}`);
 
@@ -372,6 +394,7 @@ function initializeServerSaveListener() {
                 localSaveStatus.textContent = 'Server configuration saved successfully.';
                 localSaveStatus.style.color = 'green';
                 window.currentServerConfig = newConfig;
+                window.isServerConfigDirty = false; // Reset dirty flag
                 renderServerConfig(window.currentServerConfig); 
                 if (typeof window.triggerReload === 'function') {
                     await window.triggerReload(localSaveStatus);
@@ -398,9 +421,7 @@ function initializeServerSaveListener() {
 window.loadServerConfig = loadServerConfig;
 window.renderServerEntry = renderServerEntry;
 window.addInstallButtonListeners = addInstallButtonListeners;
-// handleInstallClick is now defined in this file and also exposed to window.
 window.handleInstallClick = handleInstallClick; 
-// addEnvVarRow is locally used by renderServerEntry
 window.initializeServerSaveListener = initializeServerSaveListener;
 
 console.log("servers.js loaded");
