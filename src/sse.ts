@@ -244,6 +244,13 @@ if (enableAdminUI) {
         }
     });
 
+    // New endpoint to provide environment info like TOOLS_FOLDER to the frontend
+    app.get('/admin/environment', isAuthenticated, (req, res) => {
+        res.json({
+            toolsFolder: process.env.TOOLS_FOLDER || "" 
+        });
+    });
+
 
     // Modified install endpoint to use spawn and send SSE updates
     app.post('/admin/server/install/:serverKey', isAuthenticated, async (req, res) => {
@@ -292,7 +299,7 @@ if (enableAdminUI) {
                 let absoluteInstallDir: string; // This is the directory for the server itself, e.g., /tools/my-server
 
                 if (installDirectory) { // 1. From mcp_server.json
-                    absoluteInstallDir = path.resolve(installDirectory);
+                    absoluteInstallDir = path.resolve(installDirectory); // path.resolve handles both absolute and relative (to cwd)
                     sendAdminSseEvent('install_info', { serverKey, message: `Using 'installDirectory' from config: ${absoluteInstallDir}` });
                 } else if (process.env.TOOLS_FOLDER && process.env.TOOLS_FOLDER.trim() !== '') { // 2. From TOOLS_FOLDER env var
                     absoluteInstallDir = path.resolve(process.env.TOOLS_FOLDER.trim(), serverKey);

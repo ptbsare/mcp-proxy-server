@@ -3,7 +3,10 @@ var currentServerConfig = {};
 var currentToolConfig = { tools: {} };
 var discoveredTools = [];
 var toolDataLoaded = false;
-var adminEventSource = null;
+var adminEventSource = null; // This is the local variable
+var effectiveToolsFolder = 'tools'; // Default value if not fetched or empty
+window.effectiveToolsFolder = effectiveToolsFolder; // Expose globally
+window.adminEventSource = null; // Expose adminEventSource globally from the start
 
 // --- DOM Elements (Commonly used) ---
 const loginSection = document.getElementById('login-section');
@@ -13,15 +16,23 @@ const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
 const navServersButton = document.getElementById('nav-servers');
 const navToolsButton = document.getElementById('nav-tools');
-const navTerminalButton = document.getElementById('nav-terminal'); // Get terminal button
+const navTerminalButton = document.getElementById('nav-terminal');
 const logoutButton = document.getElementById('logout-button');
 const serversSection = document.getElementById('servers-section');
 const toolsSection = document.getElementById('tools-section');
 const saveStatus = document.getElementById('save-status');
 const saveToolStatus = document.getElementById('save-tool-status');
-// Add Server Buttons (needed for listeners here)
 const addStdioButton = document.getElementById('add-stdio-server-button');
 const addSseButton = document.getElementById('add-sse-server-button');
+
+// Elements for Parse Config Modal
+const parseServerConfigButton = document.getElementById('parse-server-config-button');
+const parseConfigModal = document.getElementById('parse-config-modal');
+const closeParseModalButton = document.getElementById('close-parse-modal');
+const jsonConfigInput = document.getElementById('json-config-input');
+const executeParseConfigButton = document.getElementById('execute-parse-config-button');
+const cancelParseConfigButton = document.getElementById('cancel-parse-config-button');
+const parseConfigError = document.getElementById('parse-config-error');
 
 
 // --- Admin SSE Connection & Handlers (Common) ---
@@ -32,14 +43,24 @@ function connectAdminSSE() {
     }
     console.log("Attempting to connect Admin SSE...");
     adminEventSource = new EventSource('/admin/sse/updates');
+    window.adminEventSource = adminEventSource; // Update global reference
+
     adminEventSource.onopen = function() { console.log("Admin SSE connection opened successfully."); };
     adminEventSource.onerror = function(err) {
         console.error("Admin SSE error:", err);
         if (adminEventSource) adminEventSource.close();
         adminEventSource = null;
+        window.adminEventSource = null; // Update global reference
         console.log("Admin SSE connection closed due to error.");
     };
-    adminEventSource.addEventListener('connected', function(event) { /* ... */ });
+    adminEventSource.addEventListener('connected', function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            console.log("Admin SSE connected message:", data.message);
+        } catch (e) {
+            console.error("Error parsing 'connected' event data:", e, event.data);
+        }
+    });
     adminEventSource.addEventListener('install_info', handleInstallUpdate);
     adminEventSource.addEventListener('install_stdout', handleInstallUpdate);
     adminEventSource.addEventListener('install_stderr', handleInstallUpdate);
@@ -60,9 +81,9 @@ function appendToInstallOutput(serverKey, text, isError = false) {
         span.textContent = formattedText.endsWith('\n') ? formattedText : formattedText + '\n';
         if (isError) {
             span.style.color = '#ff6b6b'; span.style.fontWeight = 'bold';
-        } else if (event && event.type === 'install_stderr') {
+        } else if (event && event.type === 'install_stderr') { 
              span.style.color = '#ffa07a';
-        } else if (event && event.type === 'install_info') {
+        } else if (event && event.type === 'install_info') { 
              span.style.color = '#87cefa';
         }
         outputElement.appendChild(span);
@@ -70,7 +91,7 @@ function appendToInstallOutput(serverKey, text, isError = false) {
     }
 }
 
-function handleInstallUpdate(event) {
+function handleInstallUpdate(event) { 
     try {
         const data = JSON.parse(event.data);
         const textToAdd = data.output || data.message || '';
@@ -127,28 +148,23 @@ async function triggerReload(statusElement) {
 }
 window.triggerReload = triggerReload;
 window.connectAdminSSE = connectAdminSSE;
-window.adminEventSource = adminEventSource;
+// Removed Object.defineProperty for adminEventSource
 window.appendToInstallOutput = appendToInstallOutput;
 window.getInstallOutputElement = getInstallOutputElement;
 
 
 // --- Navigation (Common) ---
 const showSection = (sectionId) => {
-    // Hide all sections first
     document.querySelectorAll('.admin-section').forEach(section => {
         section.style.display = 'none';
     });
-    // Remove active class from all nav buttons
     document.querySelectorAll('#main-nav .nav-button').forEach(button => {
         button.classList.remove('active');
     });
-
-    // Show the target section
     const targetSection = document.getElementById(sectionId);
     if (targetSection) {
         targetSection.style.display = 'block';
-        // Add active class to the corresponding nav button
-        const sectionPrefix = sectionId.split('-')[0]; // "servers" or "tools"
+        const sectionPrefix = sectionId.split('-')[0];
         const activeButton = document.getElementById(`nav-${sectionPrefix}`);
         if (activeButton) {
             activeButton.classList.add('active');
@@ -176,11 +192,27 @@ const checkLoginStatus = async () => {
     }
 };
 
-const handleLoginSuccess = () => {
+const handleLoginSuccess = async () => { 
     loginSection.style.display = 'none';
     mainNav.style.display = 'flex';
     mainContent.style.display = 'block';
-    showSection('servers-section'); // Show servers section by default
+    
+    try {
+        const envResponse = await fetch('/admin/environment');
+        if (envResponse.ok) {
+            const envData = await envResponse.json();
+            window.effectiveToolsFolder = (envData.toolsFolder && envData.toolsFolder.trim() !== '') ? envData.toolsFolder.trim() : 'tools';
+            console.log("Effective TOOLS_FOLDER set to:", window.effectiveToolsFolder);
+        } else {
+            console.warn("Failed to fetch environment info, defaulting effectiveToolsFolder to 'tools'.");
+            window.effectiveToolsFolder = 'tools';
+        }
+    } catch (err) {
+        console.error("Error fetching environment info (TOOLS_FOLDER):", err);
+        window.effectiveToolsFolder = 'tools'; // Fallback
+    }
+
+    showSection('servers-section');
     if (typeof loadServerConfig === 'function') {
         loadServerConfig();
     } else { console.error("loadServerConfig function not found."); }
@@ -188,7 +220,6 @@ const handleLoginSuccess = () => {
     loginError.textContent = '';
     connectAdminSSE();
 
-    // Initialize save listeners from modules
     if (typeof initializeServerSaveListener === 'function') {
         initializeServerSaveListener();
     } else { console.error("initializeServerSaveListener function not found."); }
@@ -205,32 +236,89 @@ const handleLogoutSuccess = () => {
     const toolList = document.getElementById('tool-list'); if (toolList) toolList.innerHTML = '';
     currentServerConfig = {}; currentToolConfig = { tools: {} }; discoveredTools = []; toolDataLoaded = false;
     loginError.textContent = '';
-    if (adminEventSource) { adminEventSource.close(); adminEventSource = null; console.log("Admin SSE closed on logout."); }
+    if (adminEventSource) { 
+        adminEventSource.close(); 
+        adminEventSource = null; 
+        window.adminEventSource = null; // Update global reference
+        console.log("Admin SSE closed on logout."); 
+    }
 };
+
+// --- Config Parsing Modal Logic ---
+function handleParseConfigExecute() {
+    if (!jsonConfigInput || !parseConfigError) return;
+    const jsonString = jsonConfigInput.value;
+    parseConfigError.textContent = '';
+
+    try {
+        const parsed = JSON.parse(jsonString);
+        let serversToAdd = {};
+
+        if (parsed.mcpServers && typeof parsed.mcpServers === 'object') {
+            serversToAdd = parsed.mcpServers;
+        } else if (typeof parsed === 'object' && (parsed.command || parsed.url)) {
+            const newKey = `parsed_server_${Date.now()}`;
+            serversToAdd[newKey] = parsed;
+        } else {
+            throw new Error("Invalid JSON structure. Expected 'mcpServers' object or a single server config object.");
+        }
+
+        let serversAddedCount = 0;
+        for (const key in serversToAdd) {
+            if (Object.prototype.hasOwnProperty.call(serversToAdd, key)) {
+                const serverConf = serversToAdd[key];
+                if (typeof serverConf !== 'object' || serverConf === null) {
+                    console.warn(`Skipping invalid server entry for key ${key} in parsed JSON.`);
+                    continue;
+                }
+                const isStdio = serverConf && typeof serverConf.command === 'string';
+                if (isStdio && !serverConf.installDirectory) {
+                    serverConf.installDirectory = `${window.effectiveToolsFolder || 'tools'}/${key}`;
+                     console.log(`Auto-filled installDirectory for ${key}: ${serverConf.installDirectory}`);
+                }
+                if (typeof window.renderServerEntry === 'function') {
+                    window.renderServerEntry(key, serverConf, true); 
+                    serversAddedCount++;
+                } else {
+                    console.error("renderServerEntry function not found.");
+                    parseConfigError.textContent = "Error: UI function to add server not found.";
+                    return;
+                }
+            }
+        }
+
+        if (serversAddedCount > 0 && typeof window.addInstallButtonListeners === 'function') {
+            window.addInstallButtonListeners();
+        }
+        
+        if (serversAddedCount === 0 && Object.keys(serversToAdd).length > 0) {
+             parseConfigError.textContent = "No valid server entries found in the provided JSON.";
+             return;
+        }
+        if (serversAddedCount > 0) {
+            jsonConfigInput.value = ''; 
+            parseConfigModal.style.display = 'none'; 
+            alert(`${serversAddedCount} server(s) parsed and added to the UI. Remember to save the configuration.`);
+        }
+    } catch (error) {
+        console.error("Error parsing JSON config:", error);
+        parseConfigError.textContent = `Error parsing JSON: ${error.message}`;
+    }
+}
+
 
 // --- Event Listeners (Initialization) ---
 document.addEventListener('DOMContentLoaded', () => {
     // --- Navigation Button Listeners ---
-    if (navServersButton) {
-        navServersButton.addEventListener('click', () => showSection('servers-section'));
-    }
+    if (navServersButton) navServersButton.addEventListener('click', () => showSection('servers-section'));
     if (navToolsButton) {
         navToolsButton.addEventListener('click', () => {
             showSection('tools-section');
-            if (!toolDataLoaded && typeof loadToolData === 'function') {
-                loadToolData();
-            } else if (typeof loadToolData !== 'function') {
-                 console.error("loadToolData function not found.");
-            }
+            if (!toolDataLoaded && typeof loadToolData === 'function') loadToolData();
+            else if (typeof loadToolData !== 'function') console.error("loadToolData not found.");
         });
     }
-    if (navTerminalButton) { // Listener for the new Terminal button
-        navTerminalButton.addEventListener('click', () => {
-            // Navigate to the terminal page
-            window.location.href = 'terminal.html';
-            // Note: 'active' class for terminal button should be handled by terminal.html/terminal.js if needed
-        });
-    }
+    if (navTerminalButton) navTerminalButton.addEventListener('click', () => window.location.href = 'terminal.html');
     if (logoutButton) {
         logoutButton.addEventListener('click', async () => {
             try {
@@ -243,14 +331,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Login Form Listener ---
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            loginError.textContent = '';
-            const username = loginForm.username.value;
-            const password = loginForm.password.value;
+            e.preventDefault(); loginError.textContent = '';
+            const username = loginForm.username.value; const password = loginForm.password.value;
             try {
                 const response = await fetch('/admin/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
                 const result = await response.json();
@@ -263,35 +348,50 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Add Server Button Listeners ---
     if (addStdioButton) {
         addStdioButton.addEventListener('click', () => {
-             if (typeof renderServerEntry !== 'function' || typeof addInstallButtonListeners !== 'function') {
-                 console.error("renderServerEntry or addInstallButtonListeners not found. Ensure servers.js is loaded.");
-                 return;
+             if (typeof window.renderServerEntry !== 'function' || typeof window.addInstallButtonListeners !== 'function') {
+                 console.error("renderServerEntry or addInstallButtonListeners not found."); return;
              }
              const newKey = `new_stdio_server_${Date.now()}`;
              const newServerConf = {
                  name: "New Stdio Server", active: true, command: "your_command_here", args: [], env: {},
-                 installDirectory: `/tools/${newKey}`
+                 installDirectory: `${window.effectiveToolsFolder || 'tools'}/${newKey}` 
              };
-             renderServerEntry(newKey, newServerConf, true); // Render expanded
-             addInstallButtonListeners(); // Re-add listeners for install buttons
+             window.renderServerEntry(newKey, newServerConf, true);
+             window.addInstallButtonListeners();
              const serverList = document.getElementById('server-list');
              serverList?.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
     }
     if (addSseButton) {
         addSseButton.addEventListener('click', () => {
-             if (typeof renderServerEntry !== 'function' || typeof addInstallButtonListeners !== 'function') {
-                 console.error("renderServerEntry or addInstallButtonListeners not found. Ensure servers.js is loaded.");
-                 return;
+             if (typeof window.renderServerEntry !== 'function' || typeof window.addInstallButtonListeners !== 'function') {
+                 console.error("renderServerEntry or addInstallButtonListeners not found."); return;
              }
              const newKey = `new_sse_server_${Date.now()}`;
-             const newServerConf = { name: "New SSE Server", active: true, url: "http://localhost:3663/sse" }; // Default port
-             renderServerEntry(newKey, newServerConf, true); // Render expanded
-             addInstallButtonListeners(); // Re-add listeners
+             const newServerConf = { name: "New SSE Server", active: true, url: "http://localhost:3663/sse" };
+             window.renderServerEntry(newKey, newServerConf, true);
+             window.addInstallButtonListeners();
              const serverList = document.getElementById('server-list');
              serverList?.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
     }
+
+    // --- Parse Config Modal Listeners ---
+    if (parseServerConfigButton) parseServerConfigButton.addEventListener('click', () => {
+        if(parseConfigModal) parseConfigModal.style.display = 'block';
+        if(parseConfigError) parseConfigError.textContent = '';
+    });
+    if (closeParseModalButton) closeParseModalButton.addEventListener('click', () => {
+        if(parseConfigModal) parseConfigModal.style.display = 'none';
+        if(parseConfigError) parseConfigError.textContent = '';
+        if(jsonConfigInput) jsonConfigInput.value = '';
+    });
+    if (cancelParseConfigButton) cancelParseConfigButton.addEventListener('click', () => {
+        if(parseConfigModal) parseConfigModal.style.display = 'none';
+        if(parseConfigError) parseConfigError.textContent = '';
+        if(jsonConfigInput) jsonConfigInput.value = '';
+    });
+    if (executeParseConfigButton) executeParseConfigButton.addEventListener('click', handleParseConfigExecute);
 
     // Initial check
     checkLoginStatus();
