@@ -277,4 +277,4 @@ This script wraps the execution of the built server (`build/index.js`) with the 
 
 ## Reference
 
-This project was originally inspired by and refactored from [ycjcl868/mcp-proxy-server](https://github.com/ycjcl868/mcp-proxy-server).
+This project was originally inspired by and refactored from [adamwattis/mcp-proxy-server](https://github.com/adamwattis/mcp-proxy-server).
