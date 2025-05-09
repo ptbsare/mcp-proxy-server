@@ -7,6 +7,7 @@ var adminEventSource = null; // This is the local variable for the current Event
 var effectiveToolsFolder = 'tools'; // Default value if not fetched or empty
 window.effectiveToolsFolder = effectiveToolsFolder; // Expose globally
 window.adminEventSource = null; // Expose adminEventSource globally from the start and keep it as a data property
+window.isServerConfigDirty = false; // Initialize and expose globally
 
 // --- DOM Elements (Commonly used) ---
 const loginSection = document.getElementById('login-section');
@@ -37,20 +38,20 @@ const parseConfigError = document.getElementById('parse-config-error');
 
 // --- Admin SSE Connection & Handlers (Common) ---
 function connectAdminSSE() {
-    if (window.adminEventSource && window.adminEventSource.readyState !== EventSource.CLOSED) { // Check window.adminEventSource
+    if (window.adminEventSource && window.adminEventSource.readyState !== EventSource.CLOSED) { 
         console.log("Admin SSE connection already open or connecting.");
         return;
     }
     console.log("Attempting to connect Admin SSE...");
-    adminEventSource = new EventSource('/admin/sse/updates'); // Assign to local var
-    window.adminEventSource = adminEventSource; // Update global reference
+    adminEventSource = new EventSource('/admin/sse/updates'); 
+    window.adminEventSource = adminEventSource; 
 
     adminEventSource.onopen = function() { console.log("Admin SSE connection opened successfully."); };
     adminEventSource.onerror = function(err) {
         console.error("Admin SSE error:", err);
         if (adminEventSource) adminEventSource.close();
         adminEventSource = null;
-        window.adminEventSource = null; // Update global reference
+        window.adminEventSource = null; 
         console.log("Admin SSE connection closed due to error.");
     };
     adminEventSource.addEventListener('connected', function(event) {
@@ -120,7 +121,6 @@ function handleInstallComplete(event) {
     } catch (e) { console.error("Error parsing install complete event data:", e, event.data); }
 }
 
-// --- Trigger Reload Function (Common) ---
 async function triggerReload(statusElement) {
     if (!statusElement) return;
     statusElement.textContent += ' Reloading configuration...';
@@ -134,6 +134,7 @@ async function triggerReload(statusElement) {
              if (toolsSection && toolsSection.style.display === 'block' && typeof loadToolData === 'function') {
                 toolDataLoaded = false; loadToolData();
             }
+            window.isServerConfigDirty = false; 
         } else {
              statusElement.textContent = `Save successful, but failed to reload: ${reloadResult.error || reloadResponse.statusText}`;
              statusElement.style.color = 'red';
@@ -148,12 +149,9 @@ async function triggerReload(statusElement) {
 }
 window.triggerReload = triggerReload;
 window.connectAdminSSE = connectAdminSSE;
-// Removed Object.defineProperty for adminEventSource, direct assignment to window.adminEventSource is used.
 window.appendToInstallOutput = appendToInstallOutput;
 window.getInstallOutputElement = getInstallOutputElement;
 
-
-// --- Navigation (Common) ---
 const showSection = (sectionId) => {
     document.querySelectorAll('.admin-section').forEach(section => {
         section.style.display = 'none';
@@ -174,7 +172,6 @@ const showSection = (sectionId) => {
     }
 };
 
-// --- Authentication (Common) ---
 const checkLoginStatus = async () => {
     try {
         const response = await fetch('/admin/config');
@@ -193,6 +190,7 @@ const checkLoginStatus = async () => {
 };
 
 const handleLoginSuccess = async () => { 
+    if (logoutButton) logoutButton.style.display = 'inline-block'; 
     loginSection.style.display = 'none';
     mainNav.style.display = 'flex';
     mainContent.style.display = 'block';
@@ -209,12 +207,13 @@ const handleLoginSuccess = async () => {
         }
     } catch (err) {
         console.error("Error fetching environment info (TOOLS_FOLDER):", err);
-        window.effectiveToolsFolder = 'tools'; // Fallback
+        window.effectiveToolsFolder = 'tools'; 
     }
 
     showSection('servers-section');
     if (typeof loadServerConfig === 'function') {
-        loadServerConfig();
+        await loadServerConfig(); 
+        window.isServerConfigDirty = false; 
     } else { console.error("loadServerConfig function not found."); }
     toolDataLoaded = false;
     loginError.textContent = '';
@@ -229,6 +228,7 @@ const handleLoginSuccess = async () => {
 };
 
 const handleLogoutSuccess = () => {
+    if (logoutButton) logoutButton.style.display = 'none'; 
     loginSection.style.display = 'block';
     mainNav.style.display = 'none';
     document.querySelectorAll('.admin-section').forEach(section => { section.style.display = 'none'; });
@@ -239,12 +239,12 @@ const handleLogoutSuccess = () => {
     if (adminEventSource) { 
         adminEventSource.close(); 
         adminEventSource = null; 
-        window.adminEventSource = null; // Update global reference
+        window.adminEventSource = null; 
         console.log("Admin SSE closed on logout."); 
     }
+    window.isServerConfigDirty = false; 
 };
 
-// --- Config Parsing Modal Logic ---
 function handleParseConfigExecute() {
     if (!jsonConfigInput || !parseConfigError) return;
     const jsonString = jsonConfigInput.value;
@@ -258,17 +258,16 @@ function handleParseConfigExecute() {
             serversToAdd = parsed.mcpServers;
         } else if (typeof parsed === 'object') {
             const keys = Object.keys(parsed);
-            let allValuesAreServerConfs = keys.length > 0; // Assume true if keys exist
+            let allValuesAreServerConfs = keys.length > 0; 
             for (const key of keys) {
                 if (!(typeof parsed[key] === 'object' && parsed[key] !== null && (parsed[key].command || parsed[key].url))) {
                     allValuesAreServerConfs = false;
                     break;
                 }
             }
-
-            if (allValuesAreServerConfs) { // Case 2: {"key1": {...}, "key2": {...}}
+            if (allValuesAreServerConfs) { 
                 serversToAdd = parsed;
-            } else if (parsed.command || parsed.url) { // Case 3: Single server object {...}
+            } else if (parsed.command || parsed.url) { 
                 const newKey = `parsed_server_${Date.now()}`;
                 serversToAdd[newKey] = parsed;
             } else {
@@ -302,18 +301,16 @@ function handleParseConfigExecute() {
             }
         }
 
-        if (serversAddedCount > 0 && typeof window.addInstallButtonListeners === 'function') {
-            window.addInstallButtonListeners();
-        }
-        
-        if (serversAddedCount === 0 && Object.keys(serversToAdd).length > 0) {
-             parseConfigError.textContent = "No valid server entries found in the provided JSON.";
-             return;
-        }
         if (serversAddedCount > 0) {
+            if (typeof window.addInstallButtonListeners === 'function') window.addInstallButtonListeners();
+            window.isServerConfigDirty = true; 
             jsonConfigInput.value = ''; 
             parseConfigModal.style.display = 'none'; 
             alert(`${serversAddedCount} server(s) parsed and added to the UI. Remember to save the configuration.`);
+        } else if (Object.keys(serversToAdd).length > 0) {
+             parseConfigError.textContent = "No valid server entries found in the provided JSON.";
+        } else {
+            parseConfigError.textContent = "No servers found in the provided JSON to add.";
         }
     } catch (error) {
         console.error("Error parsing JSON config:", error);
@@ -321,10 +318,7 @@ function handleParseConfigExecute() {
     }
 }
 
-
-// --- Event Listeners (Initialization) ---
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Navigation Button Listeners ---
     if (navServersButton) navServersButton.addEventListener('click', () => showSection('servers-section'));
     if (navToolsButton) {
         navToolsButton.addEventListener('click', () => {
@@ -343,7 +337,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Login Form Listener ---
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault(); loginError.textContent = '';
@@ -360,7 +353,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Add Server Button Listeners ---
     if (addStdioButton) {
         addStdioButton.addEventListener('click', () => {
              if (typeof window.renderServerEntry !== 'function' || typeof window.addInstallButtonListeners !== 'function') {
@@ -373,6 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
              };
              window.renderServerEntry(newKey, newServerConf, true);
              window.addInstallButtonListeners();
+             window.isServerConfigDirty = true; 
              const serverList = document.getElementById('server-list');
              serverList?.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
@@ -386,12 +379,12 @@ document.addEventListener('DOMContentLoaded', () => {
              const newServerConf = { name: "New SSE Server", active: true, url: "http://localhost:3663/sse" };
              window.renderServerEntry(newKey, newServerConf, true);
              window.addInstallButtonListeners();
+             window.isServerConfigDirty = true; 
              const serverList = document.getElementById('server-list');
              serverList?.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
     }
 
-    // --- Parse Config Modal Listeners ---
     if (parseServerConfigButton) parseServerConfigButton.addEventListener('click', () => {
         if(parseConfigModal) parseConfigModal.style.display = 'block';
         if(parseConfigError) parseConfigError.textContent = '';
@@ -408,9 +401,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     if (executeParseConfigButton) executeParseConfigButton.addEventListener('click', handleParseConfigExecute);
 
-    // Initial check
     checkLoginStatus();
 
-}); // End DOMContentLoaded
+}); 
 
 console.log("script.js loaded and initialized.");
