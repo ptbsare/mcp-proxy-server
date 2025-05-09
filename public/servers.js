@@ -7,7 +7,7 @@ const saveConfigButton = document.getElementById('save-config-button');
 
 // --- Server Configuration Management ---
 async function loadServerConfig() {
-    const localSaveStatus = document.getElementById('save-status');
+    const localSaveStatus = document.getElementById('save-status'); 
     if (!localSaveStatus || !serverListDiv) return; 
     localSaveStatus.textContent = 'Loading server configuration...';
     try {
@@ -74,7 +74,7 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
         </div>
     `;
 
-    let initialDefaultInstallDirForThisKey = ''; // For Stdio key-dir联动
+    let initialDefaultInstallDirForThisKey = ''; 
 
     if (isSSE) {
         detailsHtml += `
@@ -149,7 +149,6 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
             const currentKey = keyInput.value.trim();
             const currentInstallDir = installDirInput.value.trim();
             
-            // Update if install dir is empty OR if it was the initial default for the *original* key
             if (currentKey && (!currentInstallDir || currentInstallDir === initialDefaultInstallDirForThisKey)) {
                 const currentBaseInstallPath = (typeof window.effectiveToolsFolder === 'string' && window.effectiveToolsFolder.trim() !== '') ? window.effectiveToolsFolder.trim() : 'tools';
                 const newDynamicDefaultInstallDir = `${currentBaseInstallPath}/${currentKey}`;
@@ -167,16 +166,17 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
 
 function addInstallButtonListeners() {
     document.querySelectorAll('.install-button').forEach(button => {
-        const newButton = button.cloneNode(true);
+        const newButton = button.cloneNode(true); // Clone to remove old listeners
         button.parentNode.replaceChild(newButton, button);
         newButton.addEventListener('click', () => {
             const serverKey = newButton.dataset.serverKey;
-            if (serverKey && typeof window.handleInstallClick === 'function') {
-                window.handleInstallClick(serverKey);
-            } else if (!serverKey) {
-                console.error("Install button clicked but serverKey is missing.");
+            if (serverKey) {
+                // Directly call handleInstallClick if it's defined in this file's scope
+                // or ensure it's correctly exposed on window if called from elsewhere.
+                // Since handleInstallClick is in this file, direct call is fine.
+                handleInstallClick(serverKey); 
             } else {
-                console.error("handleInstallClick function not found on window.");
+                console.error("Install button clicked but serverKey is missing.");
             }
         });
     });
@@ -196,7 +196,61 @@ function addEnvVarRow(container, key = '', value = '') {
     container.appendChild(rowDiv);
 }
 
-// handleInstallClick is now expected to be on window from script.js
+async function handleInstallClick(serverKey) {
+    const installButton = document.querySelector(`.install-button[data-server-key="${serverKey}"]`);
+    const outputElement = window.getInstallOutputElement ? window.getInstallOutputElement(serverKey) : document.getElementById(`install-output-${serverKey}`);
+
+    if (!outputElement || !installButton) {
+        console.error(`Could not find install button or output area for ${serverKey}`);
+        return;
+    }
+
+    if (!window.adminEventSource || window.adminEventSource.readyState !== EventSource.OPEN) {
+         console.log("Admin SSE not connected, attempting to connect before install...");
+         if (typeof window.connectAdminSSE === 'function') {
+            window.connectAdminSSE(); 
+         } else {
+             console.error("connectAdminSSE function not found.");
+             if(typeof window.appendToInstallOutput === 'function') {
+                window.appendToInstallOutput(serverKey, "Error: Cannot establish connection for live updates.\n", true);
+             }
+             return;
+         }
+    }
+
+    outputElement.innerHTML = ''; 
+    outputElement.style.display = 'block'; 
+    if(typeof window.appendToInstallOutput === 'function') {
+        window.appendToInstallOutput(serverKey, `Starting installation check for ${serverKey}...\n`);
+    }
+    installButton.disabled = true;
+    installButton.textContent = 'Installing...';
+
+    try {
+        const response = await fetch(`/admin/server/install/${serverKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            const errorMsg = `Error starting installation process: ${result.error || response.statusText}\n`;
+            if(typeof window.appendToInstallOutput === 'function') window.appendToInstallOutput(serverKey, errorMsg, true);
+            installButton.disabled = false; 
+            installButton.textContent = 'Install Failed';
+            return;
+        }
+        if(typeof window.appendToInstallOutput === 'function') {
+            window.appendToInstallOutput(serverKey, `Installation process initiated. Waiting for live output via SSE...\n`);
+        }
+    } catch (error) {
+        console.error(`Error initiating installation for ${serverKey}:`, error);
+        const errorMsg = `Network error initiating installation: ${error.message}\n`;
+        if(typeof window.appendToInstallOutput === 'function') window.appendToInstallOutput(serverKey, errorMsg, true);
+        installButton.disabled = false; 
+        installButton.textContent = 'Install Failed';
+    }
+}
 
 
 function initializeServerSaveListener() {
@@ -344,6 +398,8 @@ function initializeServerSaveListener() {
 window.loadServerConfig = loadServerConfig;
 window.renderServerEntry = renderServerEntry;
 window.addInstallButtonListeners = addInstallButtonListeners;
+// handleInstallClick is now defined in this file and also exposed to window.
+window.handleInstallClick = handleInstallClick; 
 // addEnvVarRow is locally used by renderServerEntry
 window.initializeServerSaveListener = initializeServerSaveListener;
 
