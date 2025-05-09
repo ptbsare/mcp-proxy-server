@@ -23,7 +23,7 @@ header h1 {
     padding-bottom: 0;
 }
 
-nav#main-nav button {
+nav#main-nav button, nav#main-nav a.nav-button { /* Apply to buttons and <a> tags with nav-button class */
     background: none;
     border: none;
     color: #adb5bd;
@@ -33,14 +33,17 @@ nav#main-nav button {
     font-size: 1rem;
     border-radius: 4px;
     transition: background-color 0.2s ease, color 0.2s ease;
+    text-decoration: none; /* For <a> tags */
+    display: inline-flex; /* For alignment */
+    align-items: center;
 }
 
-nav#main-nav button:hover {
+nav#main-nav button:hover, nav#main-nav a.nav-button:hover {
     color: white;
     background-color: #495057;
 }
 
-nav#main-nav button.active {
+nav#main-nav button.active, nav#main-nav a.nav-button.active {
     color: white;
     font-weight: bold;
     background-color: #007bff; /* Highlight active nav button */
@@ -114,10 +117,11 @@ input:focus, textarea:focus {
 textarea {
     min-height: 60px;
     resize: vertical;
+    font-family: monospace; /* Good for JSON */
 }
 
 /* General button styling */
-button {
+button, .add-button { /* Include .add-button for consistency */
     display: inline-block;
     font-weight: 400;
     color: #fff;
@@ -138,18 +142,18 @@ button {
     margin-top: 0.5rem;
 }
 
-button:hover {
+button:hover, .add-button:hover {
     color: #fff;
     background-color: #0056b3;
     border-color: #0056b3;
 }
 
-button:focus {
+button:focus, .add-button:focus {
     outline: 0;
     box-shadow: 0 0 0 0.2rem rgba(38, 143, 255, 0.5);
 }
 
-button:disabled {
+button:disabled, .add-button:disabled {
     background-color: #6c757d;
     border-color: #6c757d;
     cursor: not-allowed;
@@ -157,11 +161,11 @@ button:disabled {
 }
 
 /* Specific button overrides if needed */
-#add-server-button {
+.add-button { /* Generalize add button style */
     background-color: #28a745;
     border-color: #28a745;
 }
-#add-server-button:hover {
+.add-button:hover {
     background-color: #218838;
     border-color: #1e7e34;
 }
@@ -261,11 +265,10 @@ button:disabled {
     background-color: #ffc107;
     border-color: #ffc107;
     color: #212529;
-    /* float: right; REMOVED - Handled by flexbox in header */
     padding: 0.25rem 0.75rem;
     font-size: 0.875rem;
-    margin: 0; /* Remove default button margins */
-    flex-shrink: 0; /* Prevent button from shrinking */
+    margin: 0; 
+    flex-shrink: 0; 
 }
 .server-entry .delete-button:hover {
     background-color: #e0a800;
@@ -275,8 +278,7 @@ button:disabled {
     background-color: #17a2b8;
     border-color: #17a2b8;
     color: white;
-    /* float: none; REMOVED */
-    margin-top: 0.5rem; /* Add margin back for install button */
+    margin-top: 0.5rem; 
 }
 .server-entry .install-button:hover {
      background-color: #138496;
@@ -289,17 +291,17 @@ button:disabled {
 
 
 /* Reload Button Styling */
-.reload-button { /* Renamed class */
-    background-color: #fd7e14; /* Orange */
+.reload-button { 
+    background-color: #fd7e14; 
     border-color: #fd7e14;
     color: white;
 }
-.reload-button:hover { /* Renamed class */
+.reload-button:hover { 
     background-color: #e67312;
     border-color: #d96c10;
 }
-.reload-button:disabled { /* Renamed class */
-    background-color: #ffc99c; /* Lighter orange when disabled */
+.reload-button:disabled { 
+    background-color: #ffc99c; 
     border-color: #ffc99c;
 }
 
@@ -377,4 +379,95 @@ hr {
 .add-env-var-button:hover {
     background-color: #0056b3; /* Darker blue on hover */
     border-color: #0056b3;
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed; /* Stay in place */
+    z-index: 1000; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
+    display: flex; /* Used to center the modal content */
+    align-items: center; /* Vertical centering */
+    justify-content: center; /* Horizontal centering */
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: auto; /* Auto margins for centering, works with flex too */
+    padding: 25px;
+    border: 1px solid #888;
+    width: 80%; /* Could be more or less, depending on screen size */
+    max-width: 700px; /* Maximum width */
+    border-radius: 8px;
+    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
+    position: relative; /* For positioning the close button */
+}
+
+.modal-content h2 {
+    margin-top: 0;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.modal-content textarea {
+    width: calc(100% - 20px); /* Adjust for padding */
+    min-height: 200px;
+    margin-bottom: 15px;
+    font-family: monospace;
+    font-size: 0.9em;
+    padding: 10px;
+}
+
+.close-button {
+    color: #aaa;
+    float: right; /* Position to the right */
+    font-size: 28px;
+    font-weight: bold;
+    position: absolute; /* Position relative to modal-content */
+    top: 10px;
+    right: 20px;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.modal-actions {
+    text-align: right; /* Align buttons to the right */
+    margin-top: 15px;
+}
+
+.modal-actions button {
+    margin-left: 10px;
+}
+
+.modal-actions button[type="button"] { /* Cancel button style */
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
+.modal-actions button[type="button"]:hover {
+    background-color: #5a6268;
+    border-color: #545b62;
+}
+
+/* Responsive adjustments for modal */
+@media screen and (max-width: 768px) {
+    .modal-content {
+        width: 90%;
+        padding: 20px;
+    }
+    .modal-content h2 {
+        font-size: 1.2rem;
+    }
+    .modal-content textarea {
+        min-height: 150px;
+    }
 }
