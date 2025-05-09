@@ -289,33 +289,52 @@ if (enableAdminUI) {
                 }
 
                 const { installDirectory, installCommands } = serverConfig;
-                let absoluteInstallDir: string;
-                if (installDirectory) {
-                    absoluteInstallDir = path.resolve(installDirectory);
-                } else {
-                    // Consider making '/tools' configurable or relative to workspace
-                    absoluteInstallDir = path.resolve('/tools', serverKey);
-                }
-                sendAdminSseEvent('install_info', { serverKey, message: `Using install directory: ${absoluteInstallDir}` });
+                let absoluteInstallDir: string; // This is the directory for the server itself, e.g., /tools/my-server
 
-                // 1. Check if directory already exists
+                if (installDirectory) { // 1. From mcp_server.json
+                    absoluteInstallDir = path.resolve(installDirectory);
+                    sendAdminSseEvent('install_info', { serverKey, message: `Using 'installDirectory' from config: ${absoluteInstallDir}` });
+                } else if (process.env.TOOLS_FOLDER && process.env.TOOLS_FOLDER.trim() !== '') { // 2. From TOOLS_FOLDER env var
+                    absoluteInstallDir = path.resolve(process.env.TOOLS_FOLDER.trim(), serverKey);
+                    sendAdminSseEvent('install_info', { serverKey, message: `Using 'TOOLS_FOLDER' env var ('${process.env.TOOLS_FOLDER.trim()}'). Target server directory: ${absoluteInstallDir}` });
+                } else { // 3. Default to a 'tools' subfolder in the project's current working directory
+                    absoluteInstallDir = path.resolve(process.cwd(), 'tools', serverKey);
+                    sendAdminSseEvent('install_info', { serverKey, message: `No 'installDirectory' in config or 'TOOLS_FOLDER' env var. Defaulting to project's 'tools' subfolder. Target server directory: ${absoluteInstallDir}` });
+                }
+                
+                // Commands should be executed in the parent directory of the server's specific folder
+                const executionCwd = path.dirname(absoluteInstallDir); 
+                console.log(`[${clientId}] Target server installation directory for ${serverKey}: ${absoluteInstallDir}`);
+                console.log(`[${clientId}] Execution CWD for install commands of ${serverKey}: ${executionCwd}`);
+                sendAdminSseEvent('install_info', { serverKey, message: `Install commands will be executed in: ${executionCwd}` });
+
+                // Ensure executionCwd (parent directory for installation) exists
+                try {
+                    await mkdir(executionCwd, { recursive: true });
+                    sendAdminSseEvent('install_info', { serverKey, message: `Ensured execution directory exists: ${executionCwd}` });
+                } catch (mkdirError: any) {
+                    sendAdminSseEvent('install_error', { serverKey, error: `Failed to create execution directory '${executionCwd}': ${mkdirError.message}` });
+                    throw mkdirError;
+                }
+
+                // 1. Check if the specific server directory (absoluteInstallDir) already exists
                 try {
                     await access(absoluteInstallDir);
-                    sendAdminSseEvent('install_info', { serverKey, message: `Directory '${absoluteInstallDir}' already exists. Installation skipped.` });
+                    sendAdminSseEvent('install_info', { serverKey, message: `Target server directory '${absoluteInstallDir}' already exists. Installation skipped.` });
                     sendAdminSseEvent('install_complete', { serverKey, code: 0, message: "Already installed." });
                     return; // Stop if already installed
                 } catch (error: any) {
                     if (error.code !== 'ENOENT') {
-                         sendAdminSseEvent('install_error', { serverKey, error: `Error checking directory: ${error.message}` });
+                         sendAdminSseEvent('install_error', { serverKey, error: `Error checking target server directory '${absoluteInstallDir}': ${error.message}` });
                          throw error; // Rethrow unexpected errors
                     }
-                    sendAdminSseEvent('install_info', { serverKey, message: `Directory '${absoluteInstallDir}' does not exist. Proceeding...` });
+                    sendAdminSseEvent('install_info', { serverKey, message: `Target server directory '${absoluteInstallDir}' does not exist. Proceeding with installation commands...` });
                 }
 
                 // 2. Execute install commands using spawn for live output
                 const commandsToRun = installCommands && Array.isArray(installCommands) ? installCommands : [];
                 if (commandsToRun.length > 0) {
-                    sendAdminSseEvent('install_info', { serverKey, message: `Executing ${commandsToRun.length} installation command(s)...` });
+                    sendAdminSseEvent('install_info', { serverKey, message: `Executing ${commandsToRun.length} installation command(s) in ${executionCwd}...` });
                     for (const command of commandsToRun) {
                         sendAdminSseEvent('install_info', { serverKey, message: `Executing: ${command}` });
 
@@ -324,9 +343,9 @@ if (enableAdminUI) {
                         const args = commandParts.slice(1);
 
                         const child = spawn(cmd, args, {
-                            shell: true, // Use shell for flexibility (pipes, etc.)
-                            cwd: process.cwd(), // Execute from project root, adjust if needed
-                            stdio: ['ignore', 'pipe', 'pipe'] // Pipe stdout and stderr
+                            shell: true, 
+                            cwd: executionCwd, // Execute in the calculated parent directory
+                            stdio: ['ignore', 'pipe', 'pipe'] 
                         });
 
                         // Stream stdout
@@ -340,13 +359,13 @@ if (enableAdminUI) {
                         child.stderr.on('data', (data) => {
                             const output = data.toString();
                             console.error(`[${clientId}] Install stderr (${serverKey}): ${output.trim()}`);
-                            sendAdminSseEvent('install_stderr', { serverKey, output }); // Send stderr as separate event type
+                            sendAdminSseEvent('install_stderr', { serverKey, output });
                         });
 
                         // Wait for command completion
                         const exitCode = await new Promise<number | null>((resolve, reject) => {
-                            child.on('close', resolve); // 'close' event provides the exit code
-                            child.on('error', (err) => { // 'error' event if spawn fails
+                            child.on('close', resolve); 
+                            child.on('error', (err) => { 
                                  console.error(`[${clientId}] Failed to start command "${command}":`, err);
                                  reject(err);
                             });
@@ -355,7 +374,7 @@ if (enableAdminUI) {
                         if (exitCode !== 0) {
                             const errorMsg = `Command "${command}" failed with exit code ${exitCode}.`;
                             sendAdminSseEvent('install_error', { serverKey, error: errorMsg, command, exitCode });
-                            throw new Error(errorMsg); // Stop installation on failure
+                            throw new Error(errorMsg); 
                         }
                         sendAdminSseEvent('install_info', { serverKey, message: `Command "${command}" completed successfully.` });
                     }
@@ -364,14 +383,20 @@ if (enableAdminUI) {
                     sendAdminSseEvent('install_info', { serverKey, message: `No installation commands provided.` });
                 }
 
-                // 3. Create the installation directory (only if commands succeeded)
+                // 3. After commands, ensure the target server directory (absoluteInstallDir) itself exists.
+                // This is important if installCommands were supposed to create it (e.g., git clone serverKey).
                 try {
-                    sendAdminSseEvent('install_info', { serverKey, message: `Creating installation directory: ${absoluteInstallDir}` });
-                    await mkdir(absoluteInstallDir, { recursive: true });
-                    sendAdminSseEvent('install_info', { serverKey, message: `Successfully created directory ${absoluteInstallDir}.` });
-                } catch (mkdirError: any) {
-                     sendAdminSseEvent('install_error', { serverKey, error: `Failed to create installation directory: ${mkdirError.message}` });
-                     throw mkdirError; // Propagate error
+                    await access(absoluteInstallDir);
+                    sendAdminSseEvent('install_info', { serverKey, message: `Confirmed target server directory exists: ${absoluteInstallDir}` });
+                } catch (error: any) {
+                     if (error.code === 'ENOENT') { // If it still doesn't exist (e.g. no commands, or commands didn't create it)
+                        sendAdminSseEvent('install_info', { serverKey, message: `Target server directory ${absoluteInstallDir} not found after commands. If commands were expected to create it, check them. Creating directory now.` });
+                        await mkdir(absoluteInstallDir, { recursive: true }); // Create it as a fallback.
+                        sendAdminSseEvent('install_info', { serverKey, message: `Successfully created target server directory ${absoluteInstallDir}.` });
+                     } else { // Other access error
+                        sendAdminSseEvent('install_error', { serverKey, error: `Error after commands, verifying/creating directory '${absoluteInstallDir}': ${error.message}` });
+                        throw error;
+                     }
                 }
 
                 // 4. Send final success event
@@ -379,9 +404,11 @@ if (enableAdminUI) {
 
             } catch (error: any) {
                 console.error(`[${clientId}] Error during server installation process for '${serverKey}':`, error);
-                // Ensure a final error event is sent via SSE if an error occurred
-                // Avoid sending duplicate errors if already sent within the loop
-                if (!error.message?.includes('failed with exit code') && !error.message?.includes('Failed to create installation directory')) {
+                if (!error.message?.includes('failed with exit code') && 
+                    !error.message?.includes('Failed to create execution directory') &&
+                    !error.message?.includes('Failed to create installation directory') &&
+                    !error.message?.includes('Error checking target server directory') &&
+                    !error.message?.includes('Error after commands, verifying/creating directory')) {
                      sendAdminSseEvent('install_error', { serverKey, error: `Installation failed: ${error.message}` });
                 }
             }

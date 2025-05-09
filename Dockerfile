@@ -75,10 +75,13 @@ ENV ENABLE_ADMIN_UI=false
 ENV ADMIN_USERNAME=admin
 ENV ADMIN_PASSWORD=password
 
+# Optional: Default folder for Stdio server installations via Admin UI
+ENV TOOLS_FOLDER=/tools
+
 # --- Volumes ---
   # For mcp_server.json and .session_secret
 VOLUME /mcp-proxy-server/config
-  # For external tools referenced in config
+  # For external tools referenced in config, and default install location if TOOLS_FOLDER is /tools
 VOLUME /tools
 
 # --- Expose Port ---
