@@ -469,11 +469,8 @@ hr {
     header {
         padding: 0.75rem 1rem; 
     }
-    .header-top-row {
-        /* Keep as row, allow items to align */
-        /* flex-direction: column; /* REMOVED */
-        /* align-items: flex-start; REMOVED */
-    }
+    /* .header-top-row adjustments for mobile are handled by its default flex properties */
+    /* No specific overrides needed here for .header-top-row itself in this media query */
     header .header-top-row h2 { /* Target h2 for title */
         font-size: 1.1rem; /* Smaller title on mobile */
         white-space: normal; /* Allow title to wrap if very long */
