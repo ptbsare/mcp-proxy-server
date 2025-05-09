@@ -11,3 +11,5 @@ config/.session_secret
 browser-*
 chatmcp
 typescript-sdk
+tools/**
+!tools/
