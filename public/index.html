@@ -43,7 +43,7 @@
             </div>
             <button id="add-stdio-server-button" class="add-button">Add Stdio Server</button>
             <button id="add-sse-server-button" class="add-button">Add SSE Server</button>
-            <button id="parse-server-config-button" class="add-button">Parse Config from JSON</button> <!-- New Button -->
+            <button id="parse-server-config-button" class="add-button">Parse Config from JSON</button>
             <hr>
             <button id="save-config-button">Save & Reload Server Configuration</button>
             <p id="save-status" class="status-message"></p>
@@ -67,8 +67,38 @@
             <div class="modal-content">
                 <span class="close-button" id="close-parse-modal">&times;</span>
                 <h2>Parse Server Configuration from JSON</h2>
-                <p>Paste your JSON configuration below. It should be an object Wärme `mcpServers` key, or a single server configuration object.</p>
-                <textarea id="json-config-input" rows="15" placeholder='{\n  "mcpServers": {\n    "my-new-server": {\n      "name": "My Parsed Server",\n      "command": "echo hello",\n      "active": true\n    }\n  }\n} \n\n OR \n\n{\n  "name": "My Single Server",\n  "url": "http://localhost:1234/sse",\n  "active": true\n}'></textarea>
+                <p>Paste your JSON configuration below. It should be an object with an `mcpServers` key, an object of server configurations, or a single server configuration object.</p>
+                <textarea id="json-config-input" rows="15" placeholder='{
+  "mcpServers": {
+    "my-new-server": {
+      "name": "My Parsed Server",
+      "command": "echo hello",
+      "active": true
+    }
+  }
+}
+
+OR
+
+{
+  "server-key-1": {
+    "name": "My Server 1",
+    "command": "echo hello",
+    "active": true
+  },
+  "server-key-2": {
+    "name": "My Server 2",
+    "url": "http://localhost:1234/sse"
+  }
+}
+
+OR
+
+{
+  "name": "My Single Server",
+  "url": "http://localhost:1234/sse",
+  "active": true
+}'></textarea>
                 <div class="modal-actions">
                     <button id="execute-parse-config-button">Parse and Add</button>
                     <button id="cancel-parse-config-button" type="button">Cancel</button>

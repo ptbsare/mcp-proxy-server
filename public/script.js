@@ -3,10 +3,10 @@ var currentServerConfig = {};
 var currentToolConfig = { tools: {} };
 var discoveredTools = [];
 var toolDataLoaded = false;
-var adminEventSource = null; // This is the local variable
+var adminEventSource = null; // This is the local variable for the current EventSource instance
 var effectiveToolsFolder = 'tools'; // Default value if not fetched or empty
 window.effectiveToolsFolder = effectiveToolsFolder; // Expose globally
-window.adminEventSource = null; // Expose adminEventSource globally from the start
+window.adminEventSource = null; // Expose adminEventSource globally from the start and keep it as a data property
 
 // --- DOM Elements (Commonly used) ---
 const loginSection = document.getElementById('login-section');
@@ -37,12 +37,12 @@ const parseConfigError = document.getElementById('parse-config-error');
 
 // --- Admin SSE Connection & Handlers (Common) ---
 function connectAdminSSE() {
-    if (adminEventSource && adminEventSource.readyState !== EventSource.CLOSED) {
+    if (window.adminEventSource && window.adminEventSource.readyState !== EventSource.CLOSED) { // Check window.adminEventSource
         console.log("Admin SSE connection already open or connecting.");
         return;
     }
     console.log("Attempting to connect Admin SSE...");
-    adminEventSource = new EventSource('/admin/sse/updates');
+    adminEventSource = new EventSource('/admin/sse/updates'); // Assign to local var
     window.adminEventSource = adminEventSource; // Update global reference
 
     adminEventSource.onopen = function() { console.log("Admin SSE connection opened successfully."); };
@@ -148,7 +148,7 @@ async function triggerReload(statusElement) {
 }
 window.triggerReload = triggerReload;
 window.connectAdminSSE = connectAdminSSE;
-// Removed Object.defineProperty for adminEventSource
+// Removed Object.defineProperty for adminEventSource, direct assignment to window.adminEventSource is used.
 window.appendToInstallOutput = appendToInstallOutput;
 window.getInstallOutputElement = getInstallOutputElement;
 
@@ -256,11 +256,26 @@ function handleParseConfigExecute() {
 
         if (parsed.mcpServers && typeof parsed.mcpServers === 'object') {
             serversToAdd = parsed.mcpServers;
-        } else if (typeof parsed === 'object' && (parsed.command || parsed.url)) {
-            const newKey = `parsed_server_${Date.now()}`;
-            serversToAdd[newKey] = parsed;
+        } else if (typeof parsed === 'object') {
+            const keys = Object.keys(parsed);
+            let allValuesAreServerConfs = keys.length > 0; // Assume true if keys exist
+            for (const key of keys) {
+                if (!(typeof parsed[key] === 'object' && parsed[key] !== null && (parsed[key].command || parsed[key].url))) {
+                    allValuesAreServerConfs = false;
+                    break;
+                }
+            }
+
+            if (allValuesAreServerConfs) { // Case 2: {"key1": {...}, "key2": {...}}
+                serversToAdd = parsed;
+            } else if (parsed.command || parsed.url) { // Case 3: Single server object {...}
+                const newKey = `parsed_server_${Date.now()}`;
+                serversToAdd[newKey] = parsed;
+            } else {
+                throw new Error("Invalid JSON. Expected 'mcpServers' object, an object of server configurations, or a single server config object.");
+            }
         } else {
-            throw new Error("Invalid JSON structure. Expected 'mcpServers' object or a single server config object.");
+            throw new Error("Invalid JSON input. Not an object.");
         }
 
         let serversAddedCount = 0;
