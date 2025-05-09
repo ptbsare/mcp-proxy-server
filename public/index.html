@@ -12,7 +12,7 @@
         <nav id="main-nav" style="display: none;">
              <button id="nav-servers" class="nav-button active">Servers</button>
              <button id="nav-tools" class="nav-button">Tools</button>
-             <button id="nav-terminal" class="nav-button">Terminal</button> <!-- Changed to button -->
+             <button id="nav-terminal" class="nav-button">Terminal</button>
              <button id="logout-button">Logout</button>
         </nav>
     </header>
@@ -43,9 +43,9 @@
             </div>
             <button id="add-stdio-server-button" class="add-button">Add Stdio Server</button>
             <button id="add-sse-server-button" class="add-button">Add SSE Server</button>
+            <button id="parse-server-config-button" class="add-button">Parse Config from JSON</button> <!-- New Button -->
             <hr>
-            <button id="save-config-button">Save & Reload Server Configuration</button> <!-- Renamed button -->
-            <!-- Removed separate reload button -->
+            <button id="save-config-button">Save & Reload Server Configuration</button>
             <p id="save-status" class="status-message"></p>
         </div>
 
@@ -58,10 +58,25 @@
                  <p>Loading tools...</p>
              </div>
              <hr>
-             <button id="save-tool-config-button">Save & Reload Tool Configuration</button> <!-- Renamed button -->
-             <!-- Removed separate reload button -->
+             <button id="save-tool-config-button">Save & Reload Tool Configuration</button>
              <p id="save-tool-status" class="status-message"></p>
         </div>
+
+        <!-- Modal for Parsing Server Config -->
+        <div id="parse-config-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close-button" id="close-parse-modal">&times;</span>
+                <h2>Parse Server Configuration from JSON</h2>
+                <p>Paste your JSON configuration below. It should be an object Wärme `mcpServers` key, or a single server configuration object.</p>
+                <textarea id="json-config-input" rows="15" placeholder='{\n  "mcpServers": {\n    "my-new-server": {\n      "name": "My Parsed Server",\n      "command": "echo hello",\n      "active": true\n    }\n  }\n} \n\n OR \n\n{\n  "name": "My Single Server",\n  "url": "http://localhost:1234/sse",\n  "active": true\n}'></textarea>
+                <div class="modal-actions">
+                    <button id="execute-parse-config-button">Parse and Add</button>
+                    <button id="cancel-parse-config-button" type="button">Cancel</button>
+                </div>
+                <p id="parse-config-error" class="error-message"></p>
+            </div>
+        </div>
+
     </main>
 
     <!-- Load specific modules first -->
