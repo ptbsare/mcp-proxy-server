@@ -61,10 +61,10 @@
       "env": {
         "API_KEY": "server_specific_key"
       },
-      "installDirectory": "/tools/unique-server-key1",
+      "installDirectory": "/custom_install_path/unique-server-key1",
       "installCommands": [
-        "git clone https://github.com/some/repo /tools/unique-server-key1",
-        "cd /tools/unique-server-key1 && npm install && npm run build"
+        "git clone https://github.com/some/repo unique-server-key1",
+        "cd unique-server-key1 && npm install && npm run build"
       ]
     },
     "another-sse-server": {
@@ -73,10 +73,11 @@
       "url": "http://localhost:8080/sse",
       "apiKey": "sse_server_api_key"
     },
-    "disabled-server": {
-        "name": "已禁用的示例",
-        "active": false,
-        "command": "echo '此服务器已禁用'"
+    "stdio-default-install": {
+        "name": "使用默认安装路径的Stdio服务器",
+        "active": true,
+        "command": "my_other_server",
+        "installCommands": ["echo '安装到默认位置...'"]
     }
   }
 }
@@ -92,8 +93,13 @@
 -   `url`: (SSE 类型必需) 后端服务器 SSE 端点的完整 URL。
 -   `apiKey`: (SSE 类型可选) 当代理连接到*此特定后端* SSE 服务器时，在 `X-Api-Key` 头部中发送的 API 密钥。
 -   `bearerToken`: (SSE 类型可选) 当代理连接到*此特定后端* SSE 服务器时，在 `Authorization: Bearer <token>` 头部中发送的令牌。(如果同时提供了 `apiKey` 和 `bearerToken`，`bearerToken` 优先)。
--   `installDirectory`: (Stdio 类型可选) 服务器应安装到或预期所在的绝对路径。由 Admin UI 的安装功能使用。如果省略，则默认为 `/tools/<server_key>`（相对于容器/环境根目录）。如果使用默认路径并希望使用安装功能，请确保运行代理服务器的用户对父目录（例如 `/tools`）具有写权限。
--   `installCommands`: (Stdio 类型可选) 一个 shell 命令数组。如果 `installDirectory` 不存在，Admin UI 的安装功能将按顺序执行这些命令。命令从代理服务器的工作目录执行。**由于存在安全风险，请谨慎使用。**
+-   `installDirectory`: (Stdio 类型可选) 服务器*本身*应安装到的绝对路径（例如 `/opt/my-server-files`）。由 Admin UI 的安装功能使用。
+    - 如果在 `mcp_server.json` 中提供，则使用此确切路径。
+    - 如果省略，则有效目录取决于 `TOOLS_FOLDER` 环境变量（参见环境变量部分）。
+        - 如果 `TOOLS_FOLDER` 已设置且非空，服务器将安装在以服务器密钥命名的子目录中（例如 `${TOOLS_FOLDER}/<server_key>`）。
+        - 如果 `TOOLS_FOLDER` 也为空或未设置，则默认为代理服务器工作目录下的 `tools` 子目录（例如 `./tools/<server_key>`）。
+    - 请确保运行代理服务器的用户对目标安装路径的父目录（例如 `TOOLS_FOLDER` 或 `./tools`）具有写权限。
+-   `installCommands`: (Stdio 类型可选) 一个 shell 命令数组。如果目标服务器目录（由 `installDirectory` 或默认规则派生）不存在，Admin UI 的安装功能将按顺序执行这些命令。命令在目标服务器安装目录的**父目录**中执行（例如，如果目标是 `/opt/tools/my-server`，命令将在 `/opt/tools/` 中运行）。**由于存在安全风险，请谨慎使用。**
 
 ### 2. 工具配置 (`config/tool_config.json`)
 此文件允许覆盖从后端服务器发现的工具的属性。主要通过 Admin UI 进行管理，但也可以手动编辑。
@@ -143,6 +149,13 @@
     # 推荐: 生成一个强密钥 (例如 openssl rand -hex 32)
     export SESSION_SECRET='your_very_strong_random_secret_here'
     ```
+-   **`TOOLS_FOLDER`**: (可选) 指定通过 Admin UI 安装 Stdio 服务器时的基础目录（当 `mcp_server.json` 中未为特定服务器明确设置 `installDirectory` 时）。
+    - 如果设置（例如 `/custom/tools_path`），则没有特定 `installDirectory` 的服务器将安装到以服务器密钥命名的子目录中（例如 `${TOOLS_FOLDER}/<server_key>`）。
+    - 如果 `TOOLS_FOLDER` 未设置或为空，则此类安装将默认为代理服务器工作目录下的 `tools` 子目录（例如 `./tools/<server_key>`）。
+    - Dockerfile 中此变量默认为 `/tools`。
+    ```bash
+    export TOOLS_FOLDER=/srv/mcp_tools
+    ```
 
 ## 开发
 
@@ -174,7 +187,7 @@ npm run watch
 
 ## 使用 Docker 运行
 
-项目提供了 `Dockerfile`。容器默认以 **SSE 模式** 运行 (使用 `build/sse.js`) 并包含所有依赖项。
+项目提供了 `Dockerfile`。容器默认以 **SSE 模式** 运行 (使用 `build/sse.js`) 并包含所有依赖项。`TOOLS_FOLDER` 环境变量在容器内默认为 `/tools`。
 
 **推荐：使用预构建镜像 (来自 GHCR)**
 
@@ -198,15 +211,16 @@ docker run -d \
   -e ADMIN_USERNAME=myadmin \
   -e ADMIN_PASSWORD=yoursupersecretpassword \
   -e MCP_PROXY_SSE_ALLOWED_KEYS="clientkey1" \
+  -e TOOLS_FOLDER=/my/custom_tools_volume `# 可选: 覆盖默认的 /tools 用于服务器安装` \
   -v ./my_config:/app/config \
-  -v /path/on/host/to/tools:/tools \
+  -v /path/on/host/to/tools:/my/custom_tools_volume `# 如果覆盖了 TOOLS_FOLDER，请挂载对应卷` \
   --name mcp-proxy \
   ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
 ```
 - 将 `./my_config` 替换为您宿主机上包含 `mcp_server.json` 和可选的 `tool_config.json` 的目录路径。容器期望配置文件位于 `/app/config`。
-- 如果您的 Stdio 服务器需要访问挂载到容器内 `/tools` 的可执行文件，请替换 `/path/on/host/to/tools`。
+- 如果您为通过 Admin UI 安装的服务器覆盖了 `TOOLS_FOLDER`，请确保挂载一个对应的卷（例如 `-v /path/on/host/for_tools:/my/custom_tools_volume`）。如果使用 Dockerfile 中默认的 `/tools` (由 `TOOLS_FOLDER` 设置)，您可以挂载到 `/tools` (例如 `-v /path/on/host/to/tools_default:/tools`)。
 - 如果您拉取了特定版本，请调整标签 (`:latest`)。
-- 按需使用 `-e` 标志设置环境变量。
+- 按需使用 `-e` 标志设置其他环境变量。
 
 **本地构建镜像 (可选):**
 ```bash
@@ -229,7 +243,8 @@ docker build -t mcp-proxy-server .
          "name": "MCP 代理 (聚合器)",
          "command": "/path/to/mcp-proxy-server/build/index.js",
          "env": {
-            "NODE_ENV": "production" // 可选: 为代理本身设置环境变量
+            "NODE_ENV": "production", // 可选: 为代理本身设置环境变量
+            "TOOLS_FOLDER": "/custom/path/for/proxy/tools" // 可选: 如果代理需要安装自己的后端服务
          }
        }
      }

@@ -58,10 +58,10 @@ Example `config/mcp_server.json`:
       "env": {
         "API_KEY": "server_specific_key"
       },
-      "installDirectory": "/tools/unique-server-key1",
+      "installDirectory": "/custom_install_path/unique-server-key1",
       "installCommands": [
-        "git clone https://github.com/some/repo /tools/unique-server-key1",
-        "cd /tools/unique-server-key1 && npm install && npm run build"
+        "git clone https://github.com/some/repo unique-server-key1",
+        "cd unique-server-key1 && npm install && npm run build"
       ]
     },
     "another-sse-server": {
@@ -70,10 +70,11 @@ Example `config/mcp_server.json`:
       "url": "http://localhost:8080/sse",
       "apiKey": "sse_server_api_key"
     },
-    "disabled-server": {
-        "name": "Disabled Example",
-        "active": false,
-        "command": "echo 'This server is disabled'"
+    "stdio-default-install": {
+        "name": "Stdio Server with Default Install Path",
+        "active": true,
+        "command": "my_other_server",
+        "installCommands": ["echo 'Installing to default location...'"]
     }
   }
 }
@@ -89,8 +90,13 @@ Example `config/mcp_server.json`:
 -   `url`: (Required for SSE type) The full URL of the backend server's SSE endpoint.
 -   `apiKey`: (Optional for SSE type) An API key to send in the `X-Api-Key` header when the proxy connects to *this specific backend* SSE server.
 -   `bearerToken`: (Optional for SSE type) A token to send in the `Authorization: Bearer <token>` header when connecting to *this specific backend* SSE server. (If both `apiKey` and `bearerToken` are provided, `bearerToken` takes precedence).
--   `installDirectory`: (Optional for Stdio type) The absolute path where the server should be installed or is expected to be found. Used by the Admin UI's installation feature. If omitted, it defaults to `/tools/<server_key>` (relative to the container/environment root). Ensure the parent directory (e.g., `/tools`) is writable by the user running the proxy server if using the default and the install feature.
--   `installCommands`: (Optional for Stdio type) An array of shell commands executed sequentially by the Admin UI's installation feature if the `installDirectory` does not exist. Commands are executed from the proxy server's working directory. **Use with extreme caution due to security risks.**
+-   `installDirectory`: (Optional for Stdio type) The absolute path where the server *itself* should be installed (e.g., `/opt/my-server-files`). Used by the Admin UI's installation feature.
+    - If provided in `mcp_server.json`, this exact path is used.
+    - If omitted, the effective directory depends on the `TOOLS_FOLDER` environment variable (see Environment Variables section).
+        - If `TOOLS_FOLDER` is set and not empty, the server will be installed in a subdirectory named after the server key within this folder (e.g., `${TOOLS_FOLDER}/<server_key>`).
+        - If `TOOLS_FOLDER` is also empty or not set, it defaults to a `tools` subdirectory within the proxy server's working directory (e.g., `./tools/<server_key>`).
+    - Ensure the parent directory of the target installation path (e.g., `TOOLS_FOLDER` or `./tools`) is writable by the user running the proxy server.
+-   `installCommands`: (Optional for Stdio type) An array of shell commands executed sequentially by the Admin UI's installation feature if the target server directory (derived from `installDirectory` or defaults) does not exist. Commands are executed from the **parent directory** of the target server installation directory (e.g., if `installDirectory` resolves to `/opt/tools/my-server`, commands run in `/opt/tools/`). **Use with extreme caution due to security risks.**
 
 ### 2. Tool Configuration (`config/tool_config.json`)
 This file allows overriding properties of tools discovered from backend servers. It is primarily managed via the Admin UI but can be edited manually.
@@ -140,6 +146,13 @@ Example `config/tool_config.json`:
     # Recommended: Generate a strong secret (e.g., openssl rand -hex 32)
     export SESSION_SECRET='your_very_strong_random_secret_here'
     ```
+-   **`TOOLS_FOLDER`**: (Optional) Specifies the base directory for Stdio server installations initiated via the Admin UI, used when `installDirectory` is not explicitly set in `mcp_server.json` for a specific server.
+    - If set (e.g., `/custom/tools_path`), installations for servers without a specific `installDirectory` will target a subdirectory named after the server key within this folder (e.g., `${TOOLS_FOLDER}/<server_key>`).
+    - If `TOOLS_FOLDER` is not set or is empty, such installations will default to a `tools` subdirectory within the proxy server's working directory (e.g., `./tools/<server_key>`).
+    - The Dockerfile sets this to `/tools` by default.
+    ```bash
+    export TOOLS_FOLDER=/srv/mcp_tools
+    ```
 
 ## Development
 
@@ -171,7 +184,7 @@ npm run watch
 
 ## Running with Docker
 
-A `Dockerfile` is provided. The container runs the server in **SSE mode** by default (using `build/sse.js`) and includes all necessary dependencies.
+A `Dockerfile` is provided. The container runs the server in **SSE mode** by default (using `build/sse.js`) and includes all necessary dependencies. The `TOOLS_FOLDER` environment variable defaults to `/tools` inside the container.
 
 **Recommended: Using the Pre-built Image (from GHCR)**
 
@@ -195,15 +208,16 @@ docker run -d \
   -e ADMIN_USERNAME=myadmin \
   -e ADMIN_PASSWORD=yoursupersecretpassword \
   -e MCP_PROXY_SSE_ALLOWED_KEYS="clientkey1" \
+  -e TOOLS_FOLDER=/my/custom_tools_volume # Optional: Override default /tools for server installations
   -v ./my_config:/app/config \
-  -v /path/on/host/to/tools:/tools \
+  -v /path/on/host/to/tools:/my/custom_tools_volume `# Mount a volume for TOOLS_FOLDER if overridden` \
   --name mcp-proxy \
   ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
 ```
 - Replace `./my_config` with your host path containing `mcp_server.json` and optionally `tool_config.json`. The container expects config files in `/app/config`.
-- Replace `/path/on/host/to/tools` if your Stdio servers require access to executables mounted at `/tools` inside the container.
+- If you override `TOOLS_FOLDER` for server installations via Admin UI, ensure you mount a corresponding volume (e.g., `-v /path/on/host/for_tools:/my/custom_tools_volume`). If using the default `/tools` (set by `TOOLS_FOLDER` in Dockerfile), you can mount to `/tools` (e.g., `-v /path/on/host/to/tools_default:/tools`).
 - Adjust the tag (`:latest`) if you pulled a specific version.
-- Set environment variables using the `-e` flag as needed.
+- Set other environment variables using the `-e` flag as needed.
 
 **Building the Image Locally (Optional):**
 ```bash
@@ -226,7 +240,8 @@ This proxy server can be used in two main ways:
          "name": "MCP Proxy (Aggregator)",
          "command": "/path/to/mcp-proxy-server/build/index.js",
          "env": {
-            "NODE_ENV": "production" // Optional: Set environment for the proxy itself
+            "NODE_ENV": "production", // Optional: Set environment for the proxy itself
+            "TOOLS_FOLDER": "/custom/path/for/proxy/tools" // Optional: If proxy needs to install its own backends
          }
        }
      }
