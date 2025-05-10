@@ -48,6 +48,7 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
         entryDiv.classList.add('collapsed');
     }
     entryDiv.dataset.serverKey = key; 
+    entryDiv.dataset.installDirManuallyEdited = 'false'; // Initialize flag
 
     const isSSE = serverConf && typeof serverConf.url === 'string';
     const isStdio = serverConf && typeof serverConf.command === 'string';
@@ -75,8 +76,6 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
         </div>
     `;
 
-    let initialDefaultInstallDirForThisKey = ''; 
-
     if (isSSE) {
         detailsHtml += `
             <div><label>URL:</label><input type="url" class="server-url-input" value="${serverConf.url || ''}" required></div>
@@ -85,8 +84,8 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
         `;
     } else if (isStdio) {
         const baseInstallPath = (typeof window.effectiveToolsFolder === 'string' && window.effectiveToolsFolder.trim() !== '') ? window.effectiveToolsFolder.trim() : 'tools';
-        initialDefaultInstallDirForThisKey = `${baseInstallPath}/${key}`;
-        const installDirValue = serverConf.installDirectory !== undefined ? serverConf.installDirectory : initialDefaultInstallDirForThisKey;
+        const defaultInstallDir = `${baseInstallPath}/${key}`;
+        const installDirValue = serverConf.installDirectory !== undefined ? serverConf.installDirectory : defaultInstallDir;
         
         detailsHtml += `
             <div><label>Command:</label><input type="text" class="server-command-input" value="${serverConf.command || ''}" required></div>
@@ -136,44 +135,53 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
     });
 
     const installButton = detailsDiv.querySelector('.install-button');
-    if (installButton) {
-        const installDirInputForButton = detailsDiv.querySelector('.server-install-dir-input');
-        if (installDirInputForButton) {
-             installDirInputForButton.addEventListener('input', () => {
-                 const hasDir = !!installDirInputForButton.value.trim();
-                 installButton.disabled = !hasDir;
-                 installButton.title = installButton.disabled ? 'Install directory must be set to enable install button' : '';
-                 window.isServerConfigDirty = true; 
-             });
-        }
-    }
-
-    const keyInput = detailsDiv.querySelector('.server-key-input');
     const installDirInput = detailsDiv.querySelector('.server-install-dir-input');
+
+    if (isStdio && installDirInput) {
+        installDirInput.addEventListener('input', () => {
+            entryDiv.dataset.installDirManuallyEdited = 'true'; // User is manually editing
+            window.isServerConfigDirty = true; 
+            if (installButton) {
+                const hasDir = !!installDirInput.value.trim();
+                installButton.disabled = !hasDir;
+                installButton.title = installButton.disabled ? 'Install directory must be set to enable install button' : '';
+            }
+        });
+    }
+    
+    const keyInput = detailsDiv.querySelector('.server-key-input');
     if (isStdio && keyInput && installDirInput) {
         keyInput.addEventListener('input', () => {
             window.isServerConfigDirty = true; 
             const currentKey = keyInput.value.trim();
-            const currentInstallDir = installDirInput.value.trim();
             
-            if (currentKey && (!currentInstallDir || currentInstallDir === initialDefaultInstallDirForThisKey)) {
-                const currentBaseInstallPath = (typeof window.effectiveToolsFolder === 'string' && window.effectiveToolsFolder.trim() !== '') ? window.effectiveToolsFolder.trim() : 'tools';
-                const newDynamicDefaultInstallDir = `${currentBaseInstallPath}/${currentKey}`;
-                installDirInput.value = newDynamicDefaultInstallDir;
-                if (installButton) {
-                     installButton.disabled = !newDynamicDefaultInstallDir.trim();
-                     installButton.title = installButton.disabled ? 'Install directory must be set to enable install button' : '';
-               }
-           }
+            if (entryDiv.dataset.installDirManuallyEdited !== 'true') {
+                if (currentKey) {
+                    const currentBaseInstallPath = (typeof window.effectiveToolsFolder === 'string' && window.effectiveToolsFolder.trim() !== '') ? window.effectiveToolsFolder.trim() : 'tools';
+                    const newDynamicDefaultInstallDir = `${currentBaseInstallPath}/${currentKey}`;
+                    installDirInput.value = newDynamicDefaultInstallDir;
+                    if (installButton) {
+                         installButton.disabled = !newDynamicDefaultInstallDir.trim();
+                         installButton.title = installButton.disabled ? 'Install directory must be set to enable install button' : '';
+                   }
+                } else { 
+                    installDirInput.value = '';
+                    if (installButton) {
+                        installButton.disabled = true;
+                        installButton.title = 'Install directory must be set to enable install button';
+                    }
+                }
+            }
         });
     }
     
-    detailsDiv.querySelectorAll('input, textarea').forEach(input => {
+    detailsDiv.querySelectorAll('input:not(.server-key-input):not(.server-install-dir-input), textarea').forEach(input => {
         input.addEventListener('input', () => { window.isServerConfigDirty = true; });
     });
     detailsDiv.querySelectorAll('input[type="checkbox"]').forEach(input => {
         input.addEventListener('change', () => { window.isServerConfigDirty = true; });
     });
+    // Server key and install dir already have specific listeners that set dirty flag
 
     serverListDiv.appendChild(entryDiv);
 }
@@ -185,7 +193,7 @@ function addInstallButtonListeners() {
         newButton.addEventListener('click', () => {
             const serverKey = newButton.dataset.serverKey;
             if (serverKey) {
-                handleInstallClick(serverKey); // Direct call to function in this file
+                handleInstallClick(serverKey); 
             } else {
                 console.error("Install button clicked but serverKey is missing.");
             }
@@ -214,13 +222,13 @@ function addEnvVarRow(container, key = '', value = '') {
 }
 
 async function handleInstallClick(serverKey) {
-    if (window.isServerConfigDirty === true) { // Explicitly check for true
+    if (window.isServerConfigDirty === true) { 
         alert("Configuration has unsaved changes. Please save the server configuration before installing.");
         return;
     }
 
     const installButton = document.querySelector(`.install-button[data-server-key="${serverKey}"]`);
-    const outputElement = window.getInstallOutputElement ? window.getInstallOutputElement(serverKey) : document.getElementById(`install-output-${serverKey}`);
+    const outputElement = typeof window.getInstallOutputElement === 'function' ? window.getInstallOutputElement(serverKey) : document.getElementById(`install-output-${serverKey}`);
 
     if (!outputElement || !installButton) {
         console.error(`Could not find install button or output area for ${serverKey}`);
@@ -315,7 +323,7 @@ function initializeServerSaveListener() {
             const commandInput = entryDiv.querySelector('.server-command-input');
             const argsInput = entryDiv.querySelector('.server-args-input');
             const envVarsContainer = entryDiv.querySelector('.env-vars-container');
-            const installDirInput = entryDiv.querySelector('.server-install-dir-input');
+            const installDirInputFromForm = entryDiv.querySelector('.server-install-dir-input'); // Renamed to avoid conflict
             const installCmdsInput = entryDiv.querySelector('.server-install-cmds-input');
 
             const serverData = {
@@ -354,15 +362,15 @@ function initializeServerSaveListener() {
                     });
                 }
                 if (!isValid) return;
-                if (installDirInput && installCmdsInput) {
-                    const installDir = installDirInput.value.trim();
+                if (installDirInputFromForm && installCmdsInput) {
+                    const installDir = installDirInputFromForm.value.trim();
                     const installCmds = installCmdsInput.value.trim().split('\n').map(cmd => cmd.trim()).filter(cmd => cmd);
                     if (installDir) {
                          serverData.installDirectory = installDir;
                          serverData.installCommands = installCmds;
                     } else if (installCmds.length > 0) {
                          isValid = false; errorMsg = `Install Directory required if Install Commands provided for "${newKey}".`;
-                         installDirInput.style.border = '1px solid red';
+                         installDirInputFromForm.style.border = '1px solid red';
                     }
                 }
             } else {
@@ -394,7 +402,7 @@ function initializeServerSaveListener() {
                 localSaveStatus.textContent = 'Server configuration saved successfully.';
                 localSaveStatus.style.color = 'green';
                 window.currentServerConfig = newConfig;
-                window.isServerConfigDirty = false; // Reset dirty flag
+                window.isServerConfigDirty = false; 
                 renderServerConfig(window.currentServerConfig); 
                 if (typeof window.triggerReload === 'function') {
                     await window.triggerReload(localSaveStatus);
