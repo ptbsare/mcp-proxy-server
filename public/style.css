@@ -23,7 +23,7 @@ header {
     padding-bottom: 0.5rem; 
 }
 
-header .header-top-row h2 { /* Corrected to h2 */
+header .header-top-row h1 { /* Corrected to h1 */
     margin: 0;
     font-size: 1.4rem; 
     border-bottom: none;
@@ -65,11 +65,11 @@ nav#main-nav button, nav#main-nav a.nav-button {
     border: none;
     color: #adb5bd;
     padding: 0.5rem 1rem;
-    margin-right: 0.5rem; /* Reduced margin for better wrapping */
+    margin-right: 0.5rem; 
     margin-bottom: 0.5rem; 
     margin-left: 0; 
     cursor: pointer;
-    font-size: 0.9rem; /* Slightly smaller nav buttons */
+    font-size: 0.9rem; 
     border-radius: 4px;
     transition: background-color 0.2s ease, color 0.2s ease;
     text-decoration: none; 
@@ -471,7 +471,7 @@ hr {
     }
     /* .header-top-row adjustments for mobile are handled by its default flex properties */
     /* No specific overrides needed here for .header-top-row itself in this media query */
-    header .header-top-row h2 { /* Target h2 for title */
+    header .header-top-row h1 { /* Corrected to h1 */
         font-size: 1.1rem; /* Smaller title on mobile */
         white-space: normal; /* Allow title to wrap if very long */
     }
@@ -500,4 +500,27 @@ hr {
     .modal-content textarea {
         min-height: 150px;
     }
+}
+
+footer { /* Basic footer style */
+    padding: 1.5rem 2rem;
+    text-align: center;
+    font-size: 0.9em;
+    background-color: #e9ecef;
+    color: #6c757d;
+    border-top: 1px solid #dee2e6;
+    margin-top: 2rem; /* Space above footer */
+}
+
+footer p {
+    margin: 0.25rem 0;
+}
+
+footer a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
 }
