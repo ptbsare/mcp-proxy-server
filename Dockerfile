@@ -9,9 +9,9 @@ WORKDIR /mcp-proxy-server
 
 # Arguments for pre-installed packages, primarily for standalone builds.
 # These allow users of the standalone Docker image to inject packages at build time.
-ARG PRE_INSTALLED_PIP_PACKAGES_ARG="mcp-server-time markitdown-mcp mcp-proxy"
-ARG PRE_INSTALLED_NPM_PACKAGES_ARG="g-search-mcp fetcher-mcp playwright time-mcp mcp-trends-hub @adenot/mcp-google-search edgeone-pages-mcp @modelcontextprotocol/server-filesystem mcp-server-weibo @variflight-ai/variflight-mcp @baidumap/mcp-server-baidu-map @modelcontextprotocol/inspector"
-ARG PRE_INSTALLED_INIT_COMMAND_ARG="playwright install --with-deps chromium"
+ARG PRE_INSTALLED_PIP_PACKAGES_ARG=""
+ARG PRE_INSTALLED_NPM_PACKAGES_ARG=""
+ARG PRE_INSTALLED_INIT_COMMAND_ARG=""
 
 # --- OS Level Setup ---
 # This section handles OS package installations.
