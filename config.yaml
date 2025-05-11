@@ -1,0 +1,41 @@
+name: "MCP Proxy Server"
+version: "0.1.3"
+slug: "mcp_proxy_server"
+description: "A central hub for Model Context Protocol (MCP) servers. Manages multiple backend MCP servers (Stdio/SSE), exposing their combined tools and resources via a unified SSE interface or as a Stdio server. Features Web UI for server/tool management, real-time installation monitoring, and optional web terminal."
+arch:
+  - amd64
+  - aarch64
+init: false
+hassio_api: true
+hassio_role: default
+homeassistant_api: false
+host_network: false
+map:
+  - "config:/mcp-proxy-server/config:rw" # App config (mcp_server.json etc.) in /mcp-proxy-server/config inside container, maps to HA's config dir for this addon
+  - "share:rw" # For TOOLS_FOLDER, maps to /share inside container
+  # - "ssl:ro"
+ports:
+  "3663/tcp": null
+ports_description:
+  "3663/tcp": "MCP Proxy Server SSE & Admin UI Port"
+options:
+  port: 3663
+  enable_admin_ui: true # Defaulting to true for Ingress
+  admin_username: "admin"
+  admin_password: "password"
+  tools_folder: "/share/mcp_tools" # Default location for tools, accessible via /share in the addon
+  mcp_proxy_sse_allowed_keys: ""
+schema:
+  port: int(1024,65535)
+  enable_admin_ui: bool
+  admin_username: str
+  admin_password: password
+  tools_folder: str
+  mcp_proxy_sse_allowed_keys: str?
+image: "ghcr.io/ptbsare/home-assistant-addons/{arch}-addon-mcp-proxy-server" # Version will be appended by build
+startup: application
+boot: auto
+webui: "http://[HOST]:[PORT:3663]/"
+ingress: true
+panel_icon: "mdi:server-network-outline"
+panel_title: "MCP Proxy Server"
