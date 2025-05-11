@@ -46,15 +46,15 @@ RUN if echo "$BUILD_FROM" | grep -q "home-assistant"; then \
     # The common apt-get above might have covered some, this ensures specific versions or presence.
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 python3-pip nodejs npm && \
-    pip3 install uv --no-cache-dir && \
+        python3 python3-pip nodejs npm
+RUN    pip3 install uv --no-cache-dir
     # Install specific Node.js version for addon
-    echo "Installing Node.js v${NODE_VERSION} for addon..." && \
-    curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
-    apt-get update && \
-    sudo apt-get install -y nodejs npm \
+    #echo "Installing Node.js v${NODE_VERSION} for addon..." && \
+    #curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
+    #apt-get update && \
+    #sudo apt-get install -y nodejs npm \
     # Install S6-Overlay for addon service management
-    echo "Installing S6-Overlay for addon..." && \
+RUN    echo "Installing S6-Overlay for addon..." && \
     S6_OVERLAY_VERSION=$(curl -sL "https://api.github.com/repos/just-containers/s6-overlay/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/') && \
     echo "Latest S6-Overlay version: $S6_OVERLAY_VERSION" && \
     curl -o /usr/local/bin/s6-overlay-installer.sh -L "https://github.com/just-containers/s6-overlay/releases/download/${S6_OVERLAY_VERSION}/s6-overlay-installer.sh" && \
