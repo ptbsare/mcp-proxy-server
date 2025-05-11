@@ -46,13 +46,13 @@ RUN if echo "$BUILD_FROM" | grep -q "home-assistant"; then \
     # The common apt-get above might have covered some, this ensures specific versions or presence.
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 python3-pip && \
+        python3 python3-pip nodejs npm && \
     pip3 install uv --no-cache-dir && \
     # Install specific Node.js version for addon
     echo "Installing Node.js v${NODE_VERSION} for addon..." && \
     curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
     apt-get update && \
-    sudo apt-get install -y nodejs \
+    sudo apt-get install -y nodejs npm \
     # Install S6-Overlay for addon service management
     echo "Installing S6-Overlay for addon..." && \
     S6_OVERLAY_VERSION=$(curl -sL "https://api.github.com/repos/just-containers/s6-overlay/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/') && \
