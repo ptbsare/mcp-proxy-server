@@ -51,7 +51,11 @@ if (ADMIN_PASSWORD === 'password' || SESSION_SECRET === 'unsafe-default-secret')
     console.warn("WARNING: Using default admin credentials or session secret. Set ADMIN_USERNAME, ADMIN_PASSWORD, and SESSION_SECRET environment variables for security.");
 }
 
-const enableAdminUI = process.env.ENABLE_ADMIN_UI === 'true';
+// Read the ENABLE_ADMIN_UI environment variable.
+const rawEnableAdminUI = process.env.ENABLE_ADMIN_UI;
+// Enable Admin UI if ENABLE_ADMIN_UI is 'true' (case-insensitive), '1', or 'yes' (case-insensitive).
+// Defaults to false if not set, empty, or any other value.
+const enableAdminUI = typeof rawEnableAdminUI === 'string' && (rawEnableAdminUI.toLowerCase() === 'true' || rawEnableAdminUI === '1' || rawEnableAdminUI.toLowerCase() === 'yes');
 
 async function getSessionSecret(): Promise<string> {
     try {
