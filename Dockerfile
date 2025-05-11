@@ -1,9 +1,9 @@
 # Default base image for standalone builds. For addons, this is overridden by build.yaml.
 ARG BUILD_FROM=nikolaik/python-nodejs:python3.12-nodejs23
-ARG NODE_VERSION=22 # Default Node.js version for addon OS setup
+
 
 FROM $BUILD_FROM AS base
-
+ARG NODE_VERSION=22 # Default Node.js version for addon OS setup
 ARG BUILD_FROM # Re-declare ARG to make it available in this stage
 WORKDIR /mcp-proxy-server
 
