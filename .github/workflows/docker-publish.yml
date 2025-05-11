@@ -81,6 +81,16 @@ jobs:
         if: steps.compare_versions.outputs.needs_build == 'true'
         uses: docker/setup-buildx-action@v3
 
+      - name: Append ENTRYPOINT and CMD to Dockerfile for standalone build
+        if: steps.compare_versions.outputs.needs_build == 'true'
+        run: |
+          echo '' >> Dockerfile # Add a newline for separation
+          echo '# Added by GitHub Actions for standalone build' >> Dockerfile
+          echo 'ENTRYPOINT ["tini", "--"]' >> Dockerfile
+          echo 'CMD ["node", "build/sse.js"]' >> Dockerfile
+          echo 'Dockerfile content after append:'
+          cat Dockerfile
+
       - name: Build and push Docker image
         if: steps.compare_versions.outputs.needs_build == 'true'
         uses: docker/build-push-action@v5

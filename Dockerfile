@@ -140,6 +140,9 @@ VOLUME /tools
 EXPOSE 3663
 
 # --- Entrypoint & Command ---
-ENTRYPOINT ["tini", "--"]
-
-CMD ["node", "build/sse.js"]
+# For Home Assistant addon builds, the entrypoint is /init (from S6-Overlay in the base image).
+# CMD is also typically handled by S6 services defined in rootfs.
+# By not specifying ENTRYPOINT or CMD here, we rely on the base image's defaults when built as an addon.
+# For standalone builds, users will need to specify the command when running the container,
+# e.g., docker run <image_name> tini -- node build/sse.js
+# Or, a multi-stage build could define a specific entrypoint/cmd for the standalone target.
