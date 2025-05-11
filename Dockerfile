@@ -71,7 +71,7 @@ RUN npm install -g pnpm
 
 RUN if [ -n "$PRE_INSTALLED_PIP_PACKAGES_ARG" ]; then \
       echo "Installing pre-defined PIP packages: $PRE_INSTALLED_PIP_PACKAGES_ARG" && \
-      uv pip install --system --no-cache-dir $PRE_INSTALLED_PIP_PACKAGES_ARG; \
+      pip install --break-system-packages --no-cache-dir $PRE_INSTALLED_PIP_PACKAGES_ARG; \
     else \
       echo "Skipping pre-defined PIP packages installation."; \
     fi
