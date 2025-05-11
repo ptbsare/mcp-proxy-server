@@ -49,7 +49,9 @@ RUN if echo "$BUILD_FROM" | grep -q "home-assistant"; then \
     apt-get install -y --no-install-recommends \
         python3 python3-pip && \
     pip3 install uv --no-cache-dir --break-system-packages && \
-    mkdir -p /tmp/uv_test && uv venv /tmp/uv_test && rm -rf /tmp/uv_test && \
+    mkdir -p /tmp/uv_test && uv --python 3.11 venv /tmp/uv_test && rm -rf /tmp/uv_test && \
+    mkdir -p /tmp/uv_test && uv --python 3.12 venv /tmp/uv_test && rm -rf /tmp/uv_test && \
+    mkdir -p /tmp/uv_test && uv --python 3.13 venv /tmp/uv_test && rm -rf /tmp/uv_test && \
     # Install specific Node.js version for addon
     echo "Installing Node.js v${NODE_VERSION} for addon..." && \
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_VERSION}.x" -o nodesource_setup.sh && \
