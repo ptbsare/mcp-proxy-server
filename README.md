@@ -188,17 +188,49 @@ A `Dockerfile` is provided. The container runs the server in **SSE mode** by def
 
 **Recommended: Using the Pre-built Image (from GHCR)**
 
-It's recommended to use the pre-built image from GitHub Container Registry for easier setup.
+It's recommended to use the pre-built image from GitHub Container Registry for easier setup. We provide two types of images:
 
-```bash
-# Pull the latest image
-docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
+1.  **Standard Image (Lean)**: This is the default and recommended image for most users. It contains the core MCP Proxy Server functionality.
+    *   Tags: `latest`, `<version>` (e.g., `0.1.2`)
+    ```bash
+    # Pull the latest standard image
+    docker pull ghcr.io/${{ github.repository }}/mcp-proxy-server:latest
 
-# Or pull a specific version (e.g., v0.1.0)
-# docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:v0.1.0
-```
+    # Or pull a specific version
+    # docker pull ghcr.io/${{ github.repository }}/mcp-proxy-server:0.1.2
+    ```
 
-Then, run the container using the pulled image name:
+2.  **Bundled Image (Full-featured)**: This image includes a set of pre-installed MCP servers and Playwright browser dependencies. It's significantly larger but provides out-of-the-box access to common tools.
+    *   Tag: `<version>-bundled-mcpservers-playwright` (e.g., `0.1.2-bundled-mcpservers-playwright`) or latest-bundled-mcpservers-playwright
+    ```bash
+    # Pull a bundled version
+    # docker pull ghcr.io/${{ github.repository }}/mcp-proxy-server:latest-bundled-mcpservers-playwright
+    ```
+
+    The bundled image includes the following pre-installed components (via Docker build arguments):
+    *   **PIP Packages** (`PRE_INSTALLED_PIP_PACKAGES_ARG`):
+        *   `mcp-server-time`
+        *   `markitdown-mcp`
+        *   `mcp-proxy`
+    *   **NPM Packages** (`PRE_INSTALLED_NPM_PACKAGES_ARG`):
+        *   `g-search-mcp`
+        *   `fetcher-mcp`
+        *   `playwright`
+        *   `time-mcp`
+        *   `mcp-trends-hub`
+        *   `@adenot/mcp-google-search`
+        *   `edgeone-pages-mcp`
+        *   `@modelcontextprotocol/server-filesystem`
+        *   `mcp-server-weibo`
+        *   `@variflight-ai/variflight-mcp`
+        *   `@baidumap/mcp-server-baidu-map`
+        *   `@modelcontextprotocol/inspector`
+    *   **Initialization Command** (`PRE_INSTALLED_INIT_COMMAND_ARG`):
+        *   `playwright install --with-deps chromium`
+
+Choose the image type that best suits your needs. For most users, the standard image is sufficient, and backend MCP servers can be configured via `mcp_server.json`.
+
+Then, run your chosen container image:
 
 ```bash
 docker run -d \

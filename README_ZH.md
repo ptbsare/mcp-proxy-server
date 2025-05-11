@@ -191,17 +191,49 @@ npm run watch
 
 **推荐：使用预构建镜像 (来自 GHCR)**
 
-建议使用 GitHub Container Registry 上的预构建镜像以便于设置。
+建议使用 GitHub Container Registry 上的预构建镜像以便于设置。我们提供两种类型的镜像：
 
-```bash
-# 拉取最新镜像
-docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
+1.  **标准版镜像 (精简版)**: 这是默认且为大多数用户推荐的镜像。它包含了 MCP 代理服务器的核心功能。
+    *   标签: `latest`, `<version>` (例如, `0.1.2`)
+    ```bash
+    # 拉取最新的标准版镜像
+    docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest 
 
-# 或拉取特定版本 (例如 v0.1.0)
-# docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:v0.1.0
-```
+    # 或拉取特定版本
+    # docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:0.1.2
+    ```
 
-然后，使用拉取的镜像名称运行容器：
+2.  **捆绑版镜像 (功能完整版)**: 此镜像包含了一组预安装的 MCP 服务器和 Playwright 浏览器依赖。它明显更大，但提供了对常用工具的开箱即用访问。
+    *   标签: `<version>-bundled-mcpservers-playwright` (例如, `0.1.2-bundled-mcpservers-playwright`) 或 `latest-bundled-mcpservers-playwright`
+    ```bash
+    # 拉取捆绑版镜像
+    # docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest-bundled-mcpservers-playwright
+    ```
+
+    捆绑版镜像通过 Docker 构建参数预装了以下组件：
+    *   **PIP 包** (`PRE_INSTALLED_PIP_PACKAGES_ARG`):
+        *   `mcp-server-time`
+        *   `markitdown-mcp`
+        *   `mcp-proxy`
+    *   **NPM 包** (`PRE_INSTALLED_NPM_PACKAGES_ARG`):
+        *   `g-search-mcp`
+        *   `fetcher-mcp`
+        *   `playwright`
+        *   `time-mcp`
+        *   `mcp-trends-hub`
+        *   `@adenot/mcp-google-search`
+        *   `edgeone-pages-mcp`
+        *   `@modelcontextprotocol/server-filesystem`
+        *   `mcp-server-weibo`
+        *   `@variflight-ai/variflight-mcp`
+        *   `@baidumap/mcp-server-baidu-map`
+        *   `@modelcontextprotocol/inspector`
+    *   **初始化命令** (`PRE_INSTALLED_INIT_COMMAND_ARG`):
+        *   `playwright install --with-deps chromium`
+
+请根据您的需求选择合适的镜像类型。对于大多数用户，标准版镜像已足够，后端 MCP 服务器可以通过 `mcp_server.json` 进行配置。
+
+然后，运行您选择的容器镜像：
 
 ```bash
 docker run -d \

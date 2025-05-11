@@ -36,8 +36,6 @@ image: "ghcr.io/ptbsare/home-assistant-addons/{arch}-addon-mcp-proxy-server" # V
 startup: application
 boot: auto
 webui: "http://[HOST]:[PORT:3663]/admin"
-ingress: true
-ingress_port: 3663
-ingress_entry: admin
+ingress: false
 panel_icon: "mdi:server-network-outline"
 panel_title: "MCP Proxy Server"
