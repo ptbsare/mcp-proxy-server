@@ -4,6 +4,7 @@ ARG NODE_VERSION=23 # Default Node.js version for addon OS setup
 
 FROM $BUILD_FROM AS base
 
+ARG BUILD_FROM # Re-declare ARG to make it available in this stage
 WORKDIR /mcp-proxy-server
 
 # Arguments for pre-installed packages, primarily for standalone builds.
@@ -46,11 +47,11 @@ RUN if echo "$BUILD_FROM" | grep -q "home-assistant"; then \
     # The common apt-get above might have covered some, this ensures specific versions or presence.
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 python3-pip nodejs npm && \
+        python3 python3-pip && \
     pip3 install uv --no-cache-dir && \
     # Install specific Node.js version for addon
-    #echo "Installing Node.js v${NODE_VERSION} for addon..." && \
-    #curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
+    echo "Installing Node.js v${NODE_VERSION} for addon..." && \
+    curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
     #apt-get update && \
     #sudo apt-get install -y nodejs npm \
     # Install S6-Overlay for addon service management
