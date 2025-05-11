@@ -1,6 +1,6 @@
 # Default base image for standalone builds. For addons, this is overridden by build.yaml.
 ARG BUILD_FROM=nikolaik/python-nodejs:python3.12-nodejs23
-ARG NODE_VERSION=23 # Default Node.js version for addon OS setup
+ARG NODE_VERSION=22 # Default Node.js version for addon OS setup
 
 FROM $BUILD_FROM AS base
 
@@ -52,12 +52,9 @@ RUN if echo "$BUILD_FROM" | grep -q "home-assistant"; then \
     mkdir -p /tmp/uv_test && uv venv /tmp/uv_test && rm -rf /tmp/uv_test && \
     # Install specific Node.js version for addon
     echo "Installing Node.js v${NODE_VERSION} for addon..." && \
-    #curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
-    # Ensure Node.js and npm are installed if using this path.
-    # The line below was `sudo apt-get install -y nodejs npm`.
-    # `sudo` is generally not available or needed in Dockerfiles.
-    # Also, `apt-get update` should precede `apt-get install`.
-    apt-get update && apt-get install -y nodejs npm && \
+    curl -fsSL "https://deb.nodesource.com/setup_${NODE_VERSION}.x" -o nodesource_setup.sh && \
+    bash nodesource_setup.sh && \
+    apt-get update && apt-get install -y nodejs && \
     # S6-Overlay is assumed to be part of the Home Assistant base image.
     # Cleanup for addon OS setup
     echo "Cleaning up apt cache for addon OS setup..." && \

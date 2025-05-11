@@ -35,7 +35,7 @@ schema:
 image: "ghcr.io/ptbsare/home-assistant-addons/{arch}-addon-mcp-proxy-server" # Version will be appended by build
 startup: application
 boot: auto
-webui: "http://[HOST]:[PORT:3663]/"
+webui: "http://[HOST]:[PORT:3663]/admin"
 ingress: true
 panel_icon: "mdi:server-network-outline"
 panel_title: "MCP Proxy Server"
