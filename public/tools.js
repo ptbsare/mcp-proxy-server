@@ -68,16 +68,26 @@ function renderTools() {
     discoveredTools.forEach(tool => {
         const toolKey = `${tool.serverName}--${tool.name}`; // Unique key
         const config = currentToolConfig.tools[toolKey] || {}; // Get config or empty object
-        renderToolEntry(toolKey, tool, config);
+        // For discovered tools, their server is considered active by the proxy at connection time
+        renderToolEntry(toolKey, tool, config, false, true); // isConfigOnly = false, isServerActive = true
         configuredToolKeys.delete(toolKey); // Remove from set as it's handled
     });
 
-    // Render any remaining configured tools that were not discovered (maybe disabled server?)
+    // Render any remaining configured tools that were not discovered
     configuredToolKeys.forEach(toolKey => {
-         console.warn(`Rendering configured tool "${toolKey}" which was not discovered (server might be inactive).`);
          const config = currentToolConfig.tools[toolKey];
+         const serverKeyForConfigOnlyTool = toolKey.split('--')[0];
+         let isServerActiveForConfigOnlyTool = true; // Default to true if server config not found or active flag is missing/true
+
+         if (window.currentServerConfig && window.currentServerConfig.mcpServers && window.currentServerConfig.mcpServers[serverKeyForConfigOnlyTool]) {
+             const serverConf = window.currentServerConfig.mcpServers[serverKeyForConfigOnlyTool];
+             if (serverConf.active === false || String(serverConf.active).toLowerCase() === 'false') {
+                 isServerActiveForConfigOnlyTool = false;
+             }
+         }
+         console.warn(`Rendering configured tool "${toolKey}" which was not discovered. Associated server active status: ${isServerActiveForConfigOnlyTool}`);
          // We don't have the full tool definition here, just render based on config
-         renderToolEntry(toolKey, null, config, true); // Pass flag indicating it's config-only
+         renderToolEntry(toolKey, null, config, true, isServerActiveForConfigOnlyTool); // Pass isConfigOnly and determined server active status
     });
 
      if (toolListDiv.innerHTML === '') {
@@ -85,11 +95,15 @@ function renderTools() {
      }
 }
 
-function renderToolEntry(toolKey, toolDefinition, toolConfig, isConfigOnly = false) {
+function renderToolEntry(toolKey, toolDefinition, toolConfig, isConfigOnly = false, isServerActive = true) { // Added isServerActive
     if (!toolListDiv) return; // Guard
     const entryDiv = document.createElement('div');
     entryDiv.classList.add('tool-entry');
     entryDiv.classList.add('collapsed'); // Add collapsed class by default
+    if (!isServerActive) {
+        entryDiv.classList.add('tool-server-inactive');
+        entryDiv.title = 'This tool belongs to an inactive server. Enabling it will have no effect.';
+    }
     entryDiv.dataset.toolKey = toolKey; // Store the original key
 
     // Determine the name and description exposed to the model
@@ -106,9 +120,9 @@ function renderToolEntry(toolKey, toolDefinition, toolConfig, isConfigOnly = fal
     entryDiv.innerHTML = `
         <div class="tool-header">
             <label class="inline-label tool-enable-label" title="Enable/Disable Tool">
-                <input type="checkbox" class="tool-enabled-input" ${isEnabled ? 'checked' : ''}>
+                <input type="checkbox" class="tool-enabled-input" ${isEnabled ? 'checked' : ''} ${!isServerActive ? 'disabled' : ''}>
             </label>
-            <h3>${toolKey}</h3>
+            <h3 title="${!isServerActive ? 'Server is inactive' : ''}">${toolKey}</h3>
             <span class="tool-exposed-name">Exposed As: ${exposedName}</span>
         </div>
         <div class="tool-details">

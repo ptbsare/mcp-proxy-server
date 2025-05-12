@@ -272,6 +272,18 @@ button:disabled, .add-button:disabled {
     vertical-align: middle; /* Consistent vertical alignment */
 }
 
+/* Styles for tools belonging to an inactive server */
+.tool-entry.tool-server-inactive .tool-header h3,
+.tool-entry.tool-server-inactive .tool-header .tool-exposed-name {
+    color: #999; /* Gray out the text */
+    cursor: not-allowed; /* Indicate non-interactivity */
+}
+.tool-entry.tool-server-inactive .tool-header .tool-enable-label {
+    opacity: 0.6; /* Dim the checkbox label slightly */
+    cursor: not-allowed;
+}
+
+
 /* Styles for server header (mostly covered by shared now) */
 .server-entry .server-header {
      /* display: flex; align-items: center; are shared */
@@ -573,6 +585,37 @@ footer { /* Basic footer style */
     color: #6c757d;
     border-top: 1px solid #dee2e6;
     margin-top: 2rem; /* Space above footer */
+}
+
+/* Responsive adjustments for Tool Header on narrow screens */
+@media screen and (max-width: 768px) {
+    .tool-entry .tool-header {
+        flex-direction: column; /* Stack items vertically */
+        align-items: flex-start; /* Align items to the left */
+    }
+
+    .tool-entry .tool-header .tool-enable-label,
+    .tool-entry .tool-header h3,
+    .tool-entry .tool-header .tool-exposed-name {
+        width: 100%; /* Make each item take full width in column layout */
+        margin-left: 0;
+        margin-right: 0;
+        padding-right: 0; /* Reset padding that was for row layout */
+    }
+
+    .tool-entry .tool-header .tool-enable-label {
+        margin-bottom: 0.5rem; /* Space below checkbox label */
+    }
+    
+    .tool-entry .tool-header h3 {
+        margin-bottom: 0.25rem; /* Space below H3 */
+        /* flex-grow: 0; /* Not strictly necessary in column, but good for clarity */
+    }
+    
+    .tool-entry .tool-header .tool-exposed-name {
+        /* font-size can remain as is or be adjusted if needed */
+        /* margin-left was reset above */
+    }
 }
 
 footer p {
