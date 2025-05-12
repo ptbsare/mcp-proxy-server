@@ -66,7 +66,7 @@ function renderTools() {
 
     // Render discovered tools first, merging with config
     discoveredTools.forEach(tool => {
-        const toolKey = `${tool.server_name}--${tool.name}`; // Unique key
+        const toolKey = `${tool.serverName}--${tool.name}`; // Unique key
         const config = currentToolConfig.tools[toolKey] || {}; // Get config or empty object
         renderToolEntry(toolKey, tool, config);
         configuredToolKeys.delete(toolKey); // Remove from set as it's handled
@@ -89,61 +89,133 @@ function renderToolEntry(toolKey, toolDefinition, toolConfig, isConfigOnly = fal
     if (!toolListDiv) return; // Guard
     const entryDiv = document.createElement('div');
     entryDiv.classList.add('tool-entry');
-    entryDiv.dataset.toolKey = toolKey;
+    entryDiv.classList.add('collapsed'); // Add collapsed class by default
+    entryDiv.dataset.toolKey = toolKey; // Store the original key
 
-    const displayName = toolConfig.displayName || (toolDefinition ? `${toolDefinition.server_name} / ${toolDefinition.name}` : toolKey);
-    const description = toolConfig.description || toolDefinition?.description || (isConfigOnly ? 'Description not available (tool not discovered)' : 'No description provided.');
+    // Determine the name and description exposed to the model
+    const exposedName = toolConfig.exposedName || toolKey;
+    const exposedDescription = toolConfig.exposedDescription || toolDefinition?.description || ''; // Use override, fallback to original, then empty string
+
+    // Get potential overrides from config for UI input fields
+    const exposedNameOverride = toolConfig.exposedName || '';
+    const exposedDescriptionOverride = toolConfig.exposedDescription || '';
+
     const isEnabled = toolConfig.enabled !== false; // Enabled by default
+    const originalDescription = toolDefinition?.description || 'N/A'; // Original description for display
 
     entryDiv.innerHTML = `
         <div class="tool-header">
-            <h3>${displayName}</h3>
-            <span class="tool-key">(${toolKey})</span>
-            <label class="inline-label tool-enable-toggle">
+            <label class="inline-label tool-enable-label" title="Enable/Disable Tool">
                 <input type="checkbox" class="tool-enabled-input" ${isEnabled ? 'checked' : ''}>
-                Enabled
             </label>
+            <h3>${toolKey}</h3>
+            <span class="tool-exposed-name">Exposed As: ${exposedName}</span>
         </div>
         <div class="tool-details">
-            <div><label>Display Name Override:</label><input type="text" class="tool-displayname-input" value="${toolConfig.displayName || ''}" placeholder="Optional: Override default name"></div>
-            <div><label>Description Override:</label><textarea class="tool-description-input" placeholder="Optional: Override default description">${toolConfig.description || ''}</textarea></div>
-            <p class="tool-original-description">Original Description: ${toolDefinition?.description || 'N/A'}</p>
+            <div>
+                <label>Exposed Tool Name Override (Optional):</label>
+                <input type="text" class="tool-exposedname-input" value="${exposedNameOverride}" placeholder="Default: ${toolKey}">
+                <small>Overrides the name exposed to AI models. Must be unique and contain only letters, numbers, _, - (not starting with a number).</small>
+            </div>
+            <div>
+                <label>Exposed Description Override (Optional):</label>
+                <textarea class="tool-exposeddescription-input" placeholder="Default: (Original Description below)">${exposedDescriptionOverride}</textarea>
+            </div>
+            <p class="tool-original-description">Original Description: ${originalDescription}</p>
             ${isConfigOnly ? '<p class="warning-message">This tool was configured but not discovered by any active server.</p>' : ''}
         </div>
     `;
 
-    toolListDiv.appendChild(entryDiv);
+    toolListDiv.appendChild(entryDiv); // Append first, then query elements within it
+
+    // Add click listener to the header (h3) to toggle collapse
+    const headerH3 = entryDiv.querySelector('.tool-header h3');
+    if (headerH3) {
+        headerH3.style.cursor = 'pointer'; // Indicate it's clickable
+        headerH3.addEventListener('click', () => {
+            entryDiv.classList.toggle('collapsed');
+        });
+    }
 }
 
 function initializeToolSaveListener() {
     if (!saveToolConfigButton || !toolListDiv || !saveToolStatus) return; // Guard
 
+    // Regex for validating exposed tool name override
+    const validToolNameRegex = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
+
     saveToolConfigButton.addEventListener('click', async () => {
-        saveToolStatus.textContent = 'Saving tool configuration...';
+        saveToolStatus.textContent = 'Validating and saving tool configuration...';
         saveToolStatus.style.color = 'orange';
         const newToolConfig = { tools: {} };
         const entries = toolListDiv.querySelectorAll('.tool-entry');
+        let isValid = true;
+        let errorMsg = '';
+        const exposedNames = new Set(); // To check for duplicates
 
         entries.forEach(entryDiv => {
-            const toolKey = entryDiv.dataset.toolKey;
+            if (!isValid) return; // Stop processing if an error occurred
+
+            const toolKey = entryDiv.dataset.toolKey; // Original key
             const enabledInput = entryDiv.querySelector('.tool-enabled-input');
-            const displayNameInput = entryDiv.querySelector('.tool-displayname-input');
-            const descriptionInput = entryDiv.querySelector('.tool-description-input');
+            const exposedNameInput = entryDiv.querySelector('.tool-exposedname-input');
+            const exposedDescriptionInput = entryDiv.querySelector('.tool-exposeddescription-input');
+
+            const exposedNameOverride = exposedNameInput.value.trim();
+            const exposedDescriptionOverride = exposedDescriptionInput.value.trim();
+            const isEnabled = enabledInput.checked;
+
+            const finalExposedName = exposedNameOverride || toolKey; // Use override or fallback to original key
+
+            // --- Validation ---
+            // 1. Validate format of the override (if provided)
+            if (exposedNameOverride && !validToolNameRegex.test(exposedNameOverride)) {
+                isValid = false;
+                errorMsg = `Invalid format for Exposed Tool Name Override "${exposedNameOverride}" for tool "${toolKey}". Use letters, numbers, _, - (cannot start with number).`;
+                exposedNameInput.style.border = '1px solid red';
+                return;
+            } else {
+                 exposedNameInput.style.border = ''; // Reset border on valid or empty
+            }
+
+            // 2. Check for duplicate exposed names (considering overrides)
+            if (exposedNames.has(finalExposedName)) {
+                isValid = false;
+                errorMsg = `Duplicate Exposed Tool Name: "${finalExposedName}". Please ensure all exposed names (including overrides) are unique.`;
+                // Highlight the input that caused the duplicate
+                exposedNameInput.style.border = '1px solid red';
+                // Optionally, find and highlight the previous entry with the same name
+                return;
+            }
+            exposedNames.add(finalExposedName);
+            // --- End Validation ---
+
 
             const configData = {
-                enabled: enabledInput.checked,
-                displayName: displayNameInput.value.trim() || undefined, // Store undefined if empty
-                description: descriptionInput.value.trim() || undefined, // Store undefined if empty
+                enabled: isEnabled,
+                // Only store overrides if they are actually set
+                exposedName: exposedNameOverride || undefined,
+                exposedDescription: exposedDescriptionOverride || undefined,
             };
 
             // Only store config if it differs from default (enabled=true, no overrides)
-            // Or if it's explicitly disabled
-            if (configData.enabled === false || configData.displayName || configData.description) {
+            // Or if it's explicitly disabled, or if overrides are set
+            if (configData.enabled === false || configData.exposedName || configData.exposedDescription) {
                  newToolConfig.tools[toolKey] = configData;
             }
         });
 
+        // If validation failed, show error and stop
+        if (!isValid) {
+            saveToolStatus.textContent = `Error: ${errorMsg}`;
+            saveToolStatus.style.color = 'red';
+            setTimeout(() => { if(saveToolStatus) saveToolStatus.textContent = ''; saveToolStatus.style.color = 'green'; }, 7000);
+            return;
+        }
+
+        // Proceed to save if valid
         try {
+            saveToolStatus.textContent = 'Saving tool configuration...'; // Update status after validation
             const response = await fetch('/admin/tools/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

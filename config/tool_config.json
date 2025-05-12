@@ -1,3 +1,9 @@
 {
-  "tools": {}
+  "tools": {
+    "12306-mcp--get-stations-code-in-city": {
+      "enabled": true,
+      "exposedName": "weikao",
+      "exposedDescription": "overide_de sdafsd"
+    }
+  }
 }

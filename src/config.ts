@@ -28,6 +28,8 @@ export interface Config {
 
 export interface ToolSettings {
   enabled: boolean;
+  exposedName?: string;
+  exposedDescription?: string;
 }
 
 export interface ToolConfig {
