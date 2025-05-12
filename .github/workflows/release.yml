@@ -81,39 +81,39 @@ jobs:
               "categories": [
                 {
                     "title": "## Feature",
-                    "labels": ["feat", "feature"]
+                    "labels": ["feat", "feature", "Feat", "Feature"]
                 },
                 {
                     "title": "## Fix",
-                    "labels": ["fix", "bug"]
+                    "labels": ["fix", "bug", "Fix", "Bug"]
                 },
                 {
                     "title": "## Performance",
-                    "labels": ["perf"]
+                    "labels": ["perf","Perf"]
                 },
                 {
                     "title": "## Documentation",
-                    "labels": ["docs"]
+                    "labels": ["docs","Docs"]
                 },
                 {
                     "title": "## Chore",
-                    "labels": ["chore"]
+                    "labels": ["chore","Chore"]
                 },
                 {
                     "title": "## Refactor",
-                    "labels": ["refactor"]
+                    "labels": ["refactor","Refactor"]
                 },
                 {
                     "title": "## Revert",
-                    "labels": ["revert"]
+                    "labels": ["revert","Revert"]
                 },
                 {
                     "title": "## Style",
-                    "labels": ["style"]
+                    "labels": ["style","Style"]
                 },
                 {
                     "title": "## Test",
-                    "labels": ["test"]
+                    "labels": ["test","Test"]
                 },
                 {
                     "title": "## Other",
@@ -122,7 +122,7 @@ jobs:
               ],
               "label_extractor": [
                 {
-                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ])+([\\s\\S]*)",
+                  "pattern": "^(build|Build|chore|Chore|ci|Ci|docs|Docs|feat|Feat|feature|Feature|bug|Bug|fix|Fix|perf|Perf|refactor|Refactor|revert|Revert|style|Style|test|Test){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ])+([\\s\\S]*)",
                   "on_property": "title",
                   "target": "$1"
                 }
