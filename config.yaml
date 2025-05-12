@@ -1,5 +1,5 @@
 name: "MCP Proxy Server"
-version: "0.1.7"
+version: "0.1.8"
 slug: "mcp_proxy_server"
 description: "A central hub for Model Context Protocol (MCP) servers. Manages multiple backend MCP servers (Stdio/SSE), exposing their combined tools and resources via a unified SSE interface or as a Stdio server. Features Web UI for server/tool management, real-time installation monitoring, and optional web terminal."
 arch:
@@ -15,7 +15,7 @@ map:
   - "share:rw" # For TOOLS_FOLDER, maps to /share inside container
   # - "ssl:ro"
 ports:
-  "3663/tcp": null
+  "3663/tcp": 3663
 ports_description:
   "3663/tcp": "MCP Proxy Server SSE & Admin UI Port"
 options:
