@@ -12,3 +12,5 @@ browser-*
 chatmcp
 typescript-sdk
 tools/**
+config/mcp_server.json
+config/tool_config.json
