@@ -56,7 +56,11 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
 
     const headerDiv = document.createElement('div');
     headerDiv.classList.add('server-header');
+    // Move Active checkbox to the header, at the beginning
     headerDiv.innerHTML = `
+        <label class="inline-label server-active-label" title="Activate/Deactivate Server">
+            <input type="checkbox" class="server-active-input" ${serverConf.active !== false ? 'checked' : ''}>
+        </label>
         <h3>${serverConf.name || key} (<span class="server-type">${type}</span>)</h3>
         <button class="delete-button">Delete</button>
     `;
@@ -65,15 +69,10 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
     const detailsDiv = document.createElement('div');
     detailsDiv.classList.add('server-details');
 
+    // Remove Active checkbox from detailsHtml
     let detailsHtml = `
         <div><label>Server Key (Unique ID):</label><input type="text" class="server-key-input" value="${key}" required></div>
         <div><label>Display Name:</label><input type="text" class="server-name-input" value="${serverConf.name || ''}"></div>
-        <div>
-            <label class="inline-label">
-                <input type="checkbox" class="server-active-input" ${serverConf.active !== false ? 'checked' : ''}>
-                Active
-            </label>
-        </div>
     `;
 
     if (isSSE) {

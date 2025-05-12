@@ -154,12 +154,16 @@ export const updateBackendConnections = async (newServerConfig: Config, newToolC
 export const getCurrentProxyState = () => {
     // Return copies or relevant info to avoid direct mutation
     const tools = Array.from(toolToClientMap.entries()).map(([qualifiedName, { client: connectedClient, toolInfo }]) => {
-        // Simplified representation for admin UI list
+        // Return structure expected by the frontend (tools.js)
         return {
-            name: qualifiedName, // Full name like "serverKey/toolName"
-            serverName: connectedClient?.name || 'Unknown', // Access name via connectedClient
-            // Description/schema would require more complex caching or fetching on demand
-            description: `[${connectedClient?.name || 'Unknown'}] ${toolInfo.name}` // Use original tool name from toolInfo
+            // Frontend expects original tool name here
+            name: toolInfo.name,
+            // Frontend expects snake_case server name here
+            serverName: connectedClient?.name || 'Unknown',
+            // Frontend expects original description here
+            description: toolInfo.description
+            // qualifiedName is not directly used by the frontend display logic,
+            // but could be added if needed: qualified_name: qualifiedName
         };
     });
     // Could add resources and prompts here if needed by admin UI later
@@ -195,48 +199,71 @@ export const createServer = async () => {
   // These handlers now rely on the maps populated by updateBackendConnections
 
   server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-    console.log("Received tools/list request - returning from cached map");
-    // Directly use the pre-populated map which now contains full tool info
+    console.log("Received tools/list request - applying overrides from config");
     const enabledTools: Tool[] = [];
-    for (const [qualifiedName, { client: connectedClient, toolInfo }] of toolToClientMap.entries()) {
-        // Construct the Tool object for the response using cached info
-        // The name exposed by the proxy is the qualified name
-        // The description and schema are from the original tool
+    // Access the globally stored tool config which includes overrides
+    const toolOverrides = currentToolConfig.tools || {};
+
+    for (const [originalQualifiedName, { client: connectedClient, toolInfo }] of toolToClientMap.entries()) {
+        const overrideSettings = toolOverrides[originalQualifiedName];
+
+        // Determine the final name and description to expose
+        // Use override if present, otherwise use original value
+        const exposedName = overrideSettings?.exposedName || originalQualifiedName;
+        const exposedDescription = overrideSettings?.exposedDescription || toolInfo.description;
+
+        // Construct the Tool object for the response
         enabledTools.push({
-            name: qualifiedName, // Use the qualified name for the proxy's list
-            description: toolInfo.description, // Use original description
-            inputSchema: toolInfo.inputSchema, // Use original schema
+            name: exposedName, // Use the final exposed name
+            description: exposedDescription, // Use the final exposed description
+            inputSchema: toolInfo.inputSchema, // Schema is never overridden
         });
     }
-    console.log(`Returning ${enabledTools.length} enabled tools from map.`);
+    console.log(`Returning ${enabledTools.length} enabled tools with applied overrides.`);
     return { tools: enabledTools };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    // This logic remains largely the same, using the map
-    const { name: qualifiedName, arguments: args } = request.params;
-    const mapEntry = toolToClientMap.get(qualifiedName); // Get the map entry { client, toolInfo }
+    const { name: requestedExposedName, arguments: args } = request.params;
+    let originalQualifiedName: string | undefined;
+    let mapEntry: { client: ConnectedClient, toolInfo: Tool } | undefined;
 
-    if (!mapEntry) {
-      // This should ideally not happen if the client uses the list provided by tools/list,
-      // but good to have a check. It also implicitly handles disabled tools as they won't be in the map.
-      console.error(`Attempted to call unknown or disabled tool: ${qualifiedName}`);
-      throw new Error(`Unknown or disabled tool: ${qualifiedName}`);
+    // Need to find the original tool based on the potentially overridden exposed name
+    const toolOverrides = currentToolConfig.tools || {};
+
+    // Iterate through the live tool map to find which original tool corresponds
+    // to the requested exposed name.
+    for (const [key, { client, toolInfo: currentToolInfo }] of toolToClientMap.entries()) { // Renamed toolInfo to currentToolInfo to avoid conflict
+        const overrideSettings = toolOverrides[key];
+        const currentExposedName = overrideSettings?.exposedName || key; // Calculate the exposed name for this tool
+
+        if (currentExposedName === requestedExposedName) {
+            originalQualifiedName = key; // Found the original key
+            mapEntry = { client, toolInfo: currentToolInfo }; // Get the corresponding entry
+            break;
+        }
     }
-    const { client: clientForTool, toolInfo } = mapEntry; // Destructure the client and toolInfo
 
-    // Extract the original tool name for the backend server (already available in toolInfo)
-    const originalToolName = toolInfo.name; // Use the name from the cached toolInfo
+    // If no entry was found after checking all enabled tools and their potential overrides
+    if (!mapEntry || !originalQualifiedName) {
+        console.error(`Attempted to call tool with exposed name "${requestedExposedName}", but no corresponding enabled tool or override configuration found.`);
+        throw new Error(`Unknown or disabled tool: ${requestedExposedName}`);
+    }
+
+    // Now we have the correct mapEntry and the originalQualifiedName
+    const { client: clientForTool, toolInfo } = mapEntry; // toolInfo here is the correct one from the found mapEntry
+    const originalToolNameForBackend = toolInfo.name; // The actual name the backend server expects (from the original toolInfo)
 
     try {
-      console.log(`Forwarding tool call for '${qualifiedName}' to server '${clientForTool.name}' as tool '${originalToolName}'`); // Access name via clientForTool
+      // Log using the exposed name and the original name for clarity
+      console.log(`Received tool call for exposed name '${requestedExposedName}' (original qualified name: '${originalQualifiedName}'). Forwarding to server '${clientForTool.name}' as tool '${originalToolNameForBackend}'`);
 
       // Access the actual MCP client via clientForTool.client
       return await clientForTool.client.request(
         {
           method: 'tools/call',
           params: {
-            name: originalToolName, // Send the original tool name to the backend
+            name: originalToolNameForBackend, // Send the original tool name (from toolInfo.name) to the backend
             arguments: args || {},
             _meta: {
               progressToken: request.params._meta?.progressToken

@@ -214,40 +214,103 @@ button:disabled, .add-button:disabled {
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
-.server-entry .server-header {
+/* Shared header styles for server and tool entries */
+.server-entry .server-header, .tool-entry .tool-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem; 
+    align-items: center; /* Key for vertical alignment of items in the row */
+    margin-bottom: 1rem;
+    /* justify-content: flex-start; /* Let items flow and use margins/flex-grow for spacing */
 }
 
-.server-entry .server-header h3 {
-    margin: 0; 
-    color: #007bff; 
+.server-entry .server-header h3, .tool-entry .tool-header h3 {
+    margin: 0;
+    color: #007bff;
     cursor: pointer;
-    flex-grow: 1; 
-    padding-right: 1rem; 
+    flex-grow: 1; /* Allow h3 to take available space */
+    padding-right: 1rem; /* Space after h3, before next inline element */
 }
-.server-entry .server-header h3:hover {
+.server-entry .server-header h3:hover, .tool-entry .tool-header h3:hover {
     text-decoration: underline;
 }
 
-.server-entry .server-details {
-    padding-left: 1rem; 
-    border-left: 2px solid #e9ecef;
-    transition: max-height 0.3s ease-out, opacity 0.3s ease-out; 
-    overflow: hidden; 
-    max-height: 2000px; 
-    opacity: 1;
+/* Style for the "Active" checkbox label in server header */
+.server-entry .server-header .server-active-label {
+    margin-right: 0.75rem; /* Space after checkbox, before H3 */
+    display: inline-flex;
+    align-items: center; /* Align items within the label itself */
+}
+.server-entry .server-header .server-active-label input[type="checkbox"] {
+    margin: 0;
+    vertical-align: middle; /* Helps align checkbox with potential (now removed) text in label */
 }
 
-.server-entry.collapsed .server-details {
-    max-height: 0; 
-    opacity: 0;
-    padding-left: 1rem; 
-    border-left: 2px solid #e9ecef; 
-    margin-top: 0; 
+
+/* Specific to tool header for additional elements */
+.tool-entry .tool-header {
+    /* display: flex; align-items: center; are shared */
+    flex-wrap: wrap; /* Allow items to wrap to the next line if space is insufficient */
+}
+
+.tool-entry .tool-header .tool-exposed-name {
+    font-size: 0.85em;
+    color: #6c757d;
+    margin-left: 0.5rem; /* Space after H3 */
+    white-space: normal; /* Allow long text to wrap */
+    /* margin-right: auto; /* Remove this, as there's no element to push to the far right anymore */
+    /* Adding a small flex-shrink to allow it to shrink if needed, but h3 should grow more */
+    flex-shrink: 1;
+}
+
+/* Style for the "Enabled" checkbox label in tool header (now at the start) */
+.tool-entry .tool-header .tool-enable-label {
+    margin-right: 0.75rem; /* Space after checkbox, before H3 */
+    display: inline-flex;
+    align-items: center;
+}
+.tool-entry .tool-header .tool-enable-label input[type="checkbox"] {
+    margin: 0;
+    vertical-align: middle; /* Consistent vertical alignment */
+}
+
+/* Styles for server header (mostly covered by shared now) */
+.server-entry .server-header {
+     /* display: flex; align-items: center; are shared */
+     /* justify-content: flex-start; /* Let items flow */
+}
+
+/* Delete button specific styling if needed, assuming it's the last element */
+.server-entry .server-header .delete-button {
+    margin-left: auto; /* Push delete button to the far right */
+    flex-shrink: 0; /* Prevent delete button from shrinking */
+}
+
+
+/* Shared details styles for server and tool entries */
+.server-entry .server-details, .tool-entry .tool-details {
+    padding-left: 1rem;
+    border-left: 2px solid #e9ecef;
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out, margin-top 0.3s ease-out, padding-top 0.3s ease-out, padding-bottom 0.3s ease-out;
     overflow: hidden;
+    max-height: 2000px; /* Arbitrary large number for expanded state */
+    opacity: 1;
+    margin-top: 1rem; /* Add some space when expanded */
+    padding-top: 1rem; /* Add padding when expanded */
+    padding-bottom: 1rem; /* Add padding when expanded */
+}
+
+.server-entry.collapsed .server-details, .tool-entry.collapsed .tool-details {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-left-width: 0; /* Hide border when collapsed for compactness */
+    padding-left: 0; /* Remove padding when collapsed */
+}
+
+/* Reduce bottom margin of header when entry is collapsed for compactness */
+.server-entry.collapsed .server-header, .tool-entry.collapsed .tool-header {
+    margin-bottom: 0;
 }
 
 .server-entry label, .tool-entry label {
