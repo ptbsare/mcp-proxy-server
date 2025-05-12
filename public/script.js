@@ -225,6 +225,9 @@ const handleLoginSuccess = async () => {
      if (typeof initializeToolSaveListener === 'function') {
         initializeToolSaveListener();
     } else { console.error("initializeToolSaveListener function not found."); }
+    if (typeof window.initializeResetAllToolOverridesListener === 'function') { // Call the new initializer
+        window.initializeResetAllToolOverridesListener();
+    } else { console.error("initializeResetAllToolOverridesListener function not found on window."); }
 };
 
 const handleLogoutSuccess = () => {

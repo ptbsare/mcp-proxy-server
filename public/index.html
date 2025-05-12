@@ -60,7 +60,10 @@
                  <p>Loading tools...</p>
              </div>
              <hr>
-             <button id="save-tool-config-button">Save & Reload Tool Configuration</button>
+             <div class="tool-actions-footer"> <!-- New wrapper div -->
+                <button id="save-tool-config-button">Save & Reload Tool Configuration</button> <!-- Save button first for left alignment -->
+                <button id="reset-all-tool-overrides-button" class="cleanup-button" title="Clear all tool-specific configurations (overrides and enabled/disabled states)">Reset All Tool Overrides</button>
+             </div>
              <p id="save-tool-status" class="status-message"></p>
         </div>
 

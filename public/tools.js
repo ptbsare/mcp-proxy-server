@@ -303,3 +303,38 @@ window.renderToolEntry = renderToolEntry; // Might not be needed globally
 window.initializeToolSaveListener = initializeToolSaveListener; // To be called from main script
 
 console.log("tools.js loaded");
+// --- Logic for Reset All Tool Overrides button ---
+function initializeResetAllToolOverridesListener() {
+    const resetButton = document.getElementById('reset-all-tool-overrides-button');
+    // Ensure saveToolStatus is available, it's declared in script.js and expected to be global or on window
+    const localSaveToolStatus = window.saveToolStatus || document.getElementById('save-tool-status'); 
+
+    if (!resetButton) {
+        console.warn("Reset All Tool Overrides button not found in DOM.");
+        return;
+    }
+
+    resetButton.addEventListener('click', async () => {
+        if (confirm("Are you sure you want to reset ALL tool overrides?\nThis will clear any custom names, descriptions, and enabled/disabled states for all tools, reverting them to their defaults. You will need to click 'Save & Reload Tool Configuration' to make this permanent.")) {
+            if (window.currentToolConfig) {
+                window.currentToolConfig.tools = {}; // Clear all tool-specific configurations
+                console.log("All tool overrides marked for deletion.");
+                
+                renderTools(); // Re-render the tools list to reflect the reset state
+
+                if (localSaveToolStatus) {
+                    localSaveToolStatus.textContent = 'All tool overrides have been reset. Click "Save & Reload" to apply.';
+                    localSaveToolStatus.style.color = 'orange';
+                    setTimeout(() => { if (localSaveToolStatus) localSaveToolStatus.textContent = ''; }, 7000);
+                }
+                // Consider adding a global dirty flag if not already handled by the main save logic
+                // e.g., window.isToolConfigDirty = true; 
+            } else {
+                alert("Tool configuration not loaded yet. Please wait or try reloading.");
+            }
+        }
+    });
+}
+
+// Expose the new initializer to be called from script.js
+window.initializeResetAllToolOverridesListener = initializeResetAllToolOverridesListener;
