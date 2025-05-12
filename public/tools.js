@@ -124,6 +124,7 @@ function renderToolEntry(toolKey, toolDefinition, toolConfig, isConfigOnly = fal
             </label>
             <h3 title="${!isServerActive ? 'Server is inactive' : ''}">${toolKey}</h3>
             <span class="tool-exposed-name">Exposed As: ${exposedName}</span>
+            <button class="reset-tool-overrides-button" title="Reset all overrides for this tool to defaults">Reset</button>
         </div>
         <div class="tool-details">
             <div>
@@ -141,6 +142,36 @@ function renderToolEntry(toolKey, toolDefinition, toolConfig, isConfigOnly = fal
     `;
 
     toolListDiv.appendChild(entryDiv); // Append first, then query elements within it
+
+    // Add click listener to the new Reset button
+    const resetButton = entryDiv.querySelector('.reset-tool-overrides-button');
+    if (resetButton) {
+        resetButton.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent a click on the button from also toggling collapse if it's in the header
+            if (confirm(`Are you sure you want to reset all overrides for tool "${toolKey}"?\nThis will remove any custom settings for its name, description, and enabled state from the configuration. You will need to save the tool configuration to make this permanent.`)) {
+                if (window.currentToolConfig && window.currentToolConfig.tools && window.currentToolConfig.tools[toolKey]) {
+                    delete window.currentToolConfig.tools[toolKey];
+                    console.log(`Overrides for tool ${toolKey} marked for deletion.`);
+                    // Mark main tool config as dirty (if such a flag exists, or rely on main save button's behavior)
+                    // To reflect changes immediately, re-render the tools list
+                    // This will pick up the deleted config for this toolKey and render it with defaults
+                    renderTools();
+                    // Optionally, provide a status message or highlight the main save button
+                    if (window.saveToolStatus) { // Ensure saveToolStatus is accessed via window or defined in this scope
+                        window.saveToolStatus.textContent = `Overrides for '${toolKey}' reset. Click "Save & Reload" to apply.`;
+                        window.saveToolStatus.style.color = 'orange';
+                        setTimeout(() => { if (window.saveToolStatus) window.saveToolStatus.textContent = ''; }, 5000);
+                    }
+                } else {
+                    // If the toolKey wasn't in currentToolConfig.tools, it means it was already using defaults.
+                    // However, the UI might show input values if the user typed them without saving.
+                    // Re-rendering will clear these UI-only changes.
+                    renderTools(); // Call renderTools to refresh the UI for this entry too
+                    alert(`Tool "${toolKey}" is already using default settings or has no saved overrides.`);
+                }
+            }
+        });
+    }
 
     // Add click listener to the header (h3) to toggle collapse
     const headerH3 = entryDiv.querySelector('.tool-header h3');

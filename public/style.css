@@ -596,11 +596,13 @@ footer { /* Basic footer style */
 
     .tool-entry .tool-header .tool-enable-label,
     .tool-entry .tool-header h3,
-    .tool-entry .tool-header .tool-exposed-name {
+    .tool-entry .tool-header .tool-exposed-name,
+    .tool-entry .tool-header .reset-tool-overrides-button { /* Added reset button here */
         width: 100%; /* Make each item take full width in column layout */
         margin-left: 0;
         margin-right: 0;
         padding-right: 0; /* Reset padding that was for row layout */
+        box-sizing: border-box; /* Ensure padding/border don't add to width */
     }
 
     .tool-entry .tool-header .tool-enable-label {
@@ -613,8 +615,16 @@ footer { /* Basic footer style */
     }
     
     .tool-entry .tool-header .tool-exposed-name {
+        margin-bottom: 0.5rem; /* Space below "Exposed As" text before reset button */
         /* font-size can remain as is or be adjusted if needed */
         /* margin-left was reset above */
+    }
+
+    .tool-entry .tool-header .reset-tool-overrides-button {
+        /* width: auto; /* Allow button to size to its content, but still be left-aligned due to align-items: flex-start on parent */
+        /* align-self: flex-start; /* Explicitly align left if width is auto */
+        /* No margin-bottom needed if it's the last item in the stacked header before details */
+        margin-top: 0.25rem; /* Add a little space if it stacks below exposed-name */
     }
 }
 
@@ -629,4 +639,20 @@ footer a {
 
 footer a:hover {
     text-decoration: underline;
+}
+/* Styles for Per-Tool Reset Button */
+.reset-tool-overrides-button {
+    background-color: #6c757d; /* Secondary/neutral color */
+    border-color: #6c757d;
+    color: #fff;
+    padding: 0.2rem 0.5rem; /* Smaller padding */
+    font-size: 0.8em; /* Smaller font */
+    margin-left: 0.75rem; /* Space from the "Exposed As" text */
+    line-height: 1.4;
+    flex-shrink: 0; /* Prevent shrinking if header space is tight */
+}
+.reset-tool-overrides-button:hover {
+    background-color: #5a6268;
+    border-color: #545b62;
+    color: #fff;
 }
