@@ -29,22 +29,28 @@ const createClient = (name: string, transportConfig: TransportConfig): { client:
       }
 
       if (customHeaders) {
+          // Apply custom headers to requestInit for POST requests
+          transportOptions.requestInit = {
+              headers: customHeaders,
+          };
+
+          // Apply custom headers to eventSourceInit.fetch for GET requests
           const headersToAdd = customHeaders;
           transportOptions.eventSourceInit = {
               fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
                   const originalHeaders = new Headers(init?.headers || {});
                   for (const key in headersToAdd) {
-                      originalHeaders.set(key, headersToAdd[key]);
-                  }
-                  return fetch(input, {
-                      ...init,
-                      headers: originalHeaders,
-                  });
-              },
+                       originalHeaders.set(key, headersToAdd[key]);
+                   }
+                   return fetch(input, {
+                       ...init,
+                       headers: originalHeaders,
+                   });
+               },
           } as any;
-      }
+       }
 
-      transport = new SSEClientTransport(new URL(transportConfig.url), transportOptions);
+       transport = new SSEClientTransport(new URL(transportConfig.url), transportOptions);
     } else if (isStdioConfig(transportConfig)) {
       const mergedEnv = {
         ...process.env,
