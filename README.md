@@ -194,17 +194,17 @@ It's recommended to use the pre-built image from GitHub Container Registry for e
     *   Tags: `latest`, `<version>` (e.g., `0.1.2`)
     ```bash
     # Pull the latest standard image
-    docker pull ghcr.io/${{ github.repository }}/mcp-proxy-server:latest
+    docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
 
     # Or pull a specific version
-    # docker pull ghcr.io/${{ github.repository }}/mcp-proxy-server:0.1.2
+    # docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:0.1.2
     ```
 
 2.  **Bundled Image (Full-featured)**: This image includes a set of pre-installed MCP servers and Playwright browser dependencies. It's significantly larger but provides out-of-the-box access to common tools.
     *   Tag: `<version>-bundled-mcpservers-playwright` (e.g., `0.1.2-bundled-mcpservers-playwright`) or latest-bundled-mcpservers-playwright
     ```bash
     # Pull a bundled version
-    # docker pull ghcr.io/${{ github.repository }}/mcp-proxy-server:latest-bundled-mcpservers-playwright
+    # docker pull ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest-bundled-mcpservers-playwright
     ```
 
     The bundled image includes the following pre-installed components (via Docker build arguments):
