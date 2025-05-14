@@ -303,6 +303,7 @@ This proxy server can be used in two main ways:
 
 Use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) for debugging communication (primarily for Stdio mode):
 ```bash
+#Install MCP Inspector first
 npm run inspector
 ```
 This script wraps the execution of the built server (`build/index.js`) with the inspector. Access the inspector UI via the URL provided in the console output. For SSE mode, standard browser developer tools can be used to inspect network requests.
