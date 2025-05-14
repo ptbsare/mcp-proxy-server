@@ -4,7 +4,7 @@
 ## ✨ Key Features Highlight
 
 *   **🌐 Web UI Management:** Easily manage all connected MCP servers through an intuitive web interface (optional, requires enabling).
-*   **🔧 Granular Tool Control:** Enable or disable individual tools, and override display names/descriptions via the Web UI.
+*   **🔧 Granular Tool Control:** Enable or disable individual tools, and override names/descriptions via the Web UI.
 *   **🔒 Dual SSE Authentication:** Secure your SSE endpoint with flexible authentication options (`Authorization: Bearer <token>` or `X-API-Key: <key>`).
 *   **🔄 Improved SSE Session Handling**: More robust handling of client reconnections, relying on server-sent `endpoint` events for session synchronization.
 *   **✨ Real-time Install Output**: Monitor Stdio server installation progress (stdout/stderr) directly in the Web UI.
