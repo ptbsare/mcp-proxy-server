@@ -244,9 +244,9 @@ docker run -d \
   -e ADMIN_PASSWORD=yoursupersecretpassword \
   -e MCP_PROXY_SSE_ALLOWED_KEYS="clientkey1" \
   -e TOOLS_FOLDER=/my/custom_tools_volume `# 可选: 覆盖默认的 /tools 用于服务器安装` \
-  -v ./my_config:/app/config \
+  -v ./my_config:/mcp-proxy-server/config \
   -v /path/on/host/to/tools:/my/custom_tools_volume `# 如果覆盖了 TOOLS_FOLDER，请挂载对应卷` \
-  --name mcp-proxy \
+  --name mcp-proxy-server \
   ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
 ```
 - 将 `./my_config` 替换为您宿主机上包含 `mcp_server.json` 和可选的 `tool_config.json` 的目录路径。容器期望配置文件位于 `/app/config`。

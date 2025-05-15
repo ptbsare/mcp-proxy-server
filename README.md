@@ -241,9 +241,9 @@ docker run -d \
   -e ADMIN_PASSWORD=yoursupersecretpassword \
   -e MCP_PROXY_SSE_ALLOWED_KEYS="clientkey1" \
   -e TOOLS_FOLDER=/my/custom_tools_volume # Optional: Override default /tools for server installations
-  -v ./my_config:/app/config \
+  -v ./my_config:/mcp-proxy-server/config \
   -v /path/on/host/to/tools:/my/custom_tools_volume `# Mount a volume for TOOLS_FOLDER if overridden` \
-  --name mcp-proxy \
+  --name mcp-proxy-server \
   ghcr.io/ptbsare/mcp-proxy-server/mcp-proxy-server:latest
 ```
 - Replace `./my_config` with your host path containing `mcp_server.json` and optionally `tool_config.json`. The container expects config files in `/app/config`.
