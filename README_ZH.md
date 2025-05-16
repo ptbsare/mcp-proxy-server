@@ -17,8 +17,8 @@
 
 本服务器作为模型上下文协议 (MCP) 资源服务器的中心枢纽。它可以：
 
-- 连接并管理多个后端的 MCP 服务器（支持 Stdio 和 SSE 类型）。
-- 通过统一的 SSE 接口暴露它们组合后的能力（工具、资源），**或者**本身作为一个基于 Stdio 的 MCP 服务器运行。
+- 连接并管理多个后端的 MCP 服务器（支持 Stdio、SSE 和 Streamable HTTP 类型）。
+- 通过统一的 SSE 接口、Streamable HTTP 接口暴露它们组合后的能力（工具、资源），**或者**本身作为一个基于 Stdio 的 MCP 服务器运行。
 - 处理将请求路由到合适的后端服务器。
 - 在需要时聚合来自多个来源的响应（主要作为代理）。
 - 支持多个并发的 SSE 客户端连接，并提供可选的 API 密钥认证。
@@ -33,7 +33,7 @@
 
 ### ✨ 可选的 Web Admin UI (`ENABLE_ADMIN_UI=true`)
 提供一个基于浏览器的界面，用于管理代理服务器配置和连接的工具。功能包括：
-- **服务器配置**: 查看、添加、编辑和删除服务器条目 (`mcp_server.json`)。支持 Stdio 和 SSE 两种服务器类型，并提供相关选项（command, args, env, url, apiKey, bearerToken, install config）。
+- **服务器配置**: 查看、添加、编辑和删除服务器条目 (`mcp_server.json`)。支持 Stdio、SSE 和 HTTP 三种服务器类型，并提供相关选项（type, command, args, env, url, apiKey, bearerToken, install config）。
 - **工具配置**: 查看从活动后端服务器发现的所有工具。启用或禁用特定工具。为每个工具覆盖显示名称和描述 (`tool_config.json`)。
 - **实时重载**: 通过触发配置重载来应用服务器和工具的配置更改，无需重启整个代理服务器进程。
 - **Stdio 服务器安装**: 对于 Stdio 类型的服务器，您可以在配置中定义安装命令。Admin UI 允许您：
@@ -54,6 +54,7 @@
 {
   "mcpServers": {
     "unique-server-key1": {
+      "type": "stdio",
       "name": "我的 Stdio 服务器",
       "active": true,
       "command": "/path/to/server/executable",
@@ -68,12 +69,21 @@
       ]
     },
     "another-sse-server": {
+      "type": "sse",
       "name": "我的 SSE 服务器",
       "active": true,
       "url": "http://localhost:8080/sse",
       "apiKey": "sse_server_api_key"
     },
+    "http-mcp-server": {
+      "type": "http",
+      "name": "我的 Streamable HTTP 服务器",
+      "active": true,
+      "url": "http://localhost:8081/mcp",
+      "bearerToken": "some_secure_token_for_http_server"
+    },
     "stdio-default-install": {
+        "type": "stdio",
         "name": "使用默认安装路径的Stdio服务器",
         "active": true,
         "command": "my_other_server",
@@ -87,13 +97,14 @@
 -   `mcpServers`: (必需) 一个对象，其中每个键是后端服务器的唯一标识符。
 -   `name`: (可选) 服务器的用户友好显示名称（在 Admin UI 中使用）。
 -   `active`: (可选, 默认: `true`) 设置为 `false` 以阻止代理连接到此服务器。
--   `command`: (Stdio 类型必需) 执行服务器进程的命令。
--   `args`: (Stdio 类型可选) 传递给命令的字符串参数数组。
--   `env`: (Stdio 类型可选) 为服务器进程设置的环境变量对象 (`KEY: "value"`)。这些变量会与代理服务器的环境变量合并。
--   `url`: (SSE 类型必需) 后端服务器 SSE 端点的完整 URL。
--   `apiKey`: (SSE 类型可选) 当代理连接到*此特定后端* SSE 服务器时，在 `X-Api-Key` 头部中发送的 API 密钥。
--   `bearerToken`: (SSE 类型可选) 当代理连接到*此特定后端* SSE 服务器时，在 `Authorization: Bearer <token>` 头部中发送的令牌。(如果同时提供了 `apiKey` 和 `bearerToken`，`bearerToken` 优先)。
--   `installDirectory`: (Stdio 类型可选) 服务器*本身*应安装到的绝对路径（例如 `/opt/my-server-files`）。由 Admin UI 的安装功能使用。
+-   `type`: (必需) 指定传输类型。必须是 `"stdio"`, `"sse"`, 或 `"http"` 之一。
+-   `command`: (当 `type` 为 "stdio" 时必需) 执行服务器进程的命令。
+-   `args`: (当 `type` 为 "stdio" 时可选) 传递给命令的字符串参数数组。
+-   `env`: (当 `type` 为 "stdio" 时可选) 为服务器进程设置的环境变量对象 (`KEY: "value"`)。这些变量会与代理服务器的环境变量合并。
+-   `url`: (当 `type` 为 "sse" 或 "http" 时必需) 后端服务器端点的完整 URL (例如, "sse" 类型的 SSE 端点, "http" 类型的 MCP 端点)。
+-   `apiKey`: (当 `type` 为 "sse" 或 "http" 时可选) 当代理连接到*此特定后端*服务器时，在 `X-Api-Key` 头部中发送的 API 密钥。
+-   `bearerToken`: (当 `type` 为 "sse" 或 "http" 时可选) 当代理连接到*此特定后端*服务器时，在 `Authorization: Bearer <token>` 头部中发送的令牌。(如果同时提供了 `apiKey` 和 `bearerToken`，通常 `bearerToken` 优先)。
+-   `installDirectory`: (当 `type` 为 "stdio" 时可选) 服务器*本身*应安装到的绝对路径（例如 `/opt/my-server-files`）。由 Admin UI 的安装功能使用。
     - 如果在 `mcp_server.json` 中提供，则使用此确切路径。
     - 如果省略，则有效目录取决于 `TOOLS_FOLDER` 环境变量（参见环境变量部分）。
         - 如果 `TOOLS_FOLDER` 已设置且非空，服务器将安装在以服务器密钥命名的子目录中（例如 `${TOOLS_FOLDER}/<server_key>`）。
@@ -126,15 +137,15 @@
 
 ### 3. 环境变量
 
--   **`PORT`**: 代理服务器主 SSE 端点（以及 Admin UI，如果启用）监听的端口。默认: `3663`。**注意：** 仅在以 SSE 模式运行时（例如，通过 `npm run dev:sse` 或 Docker 容器）使用。`npm run dev` 脚本以 Stdio 模式运行。
+-   **`PORT`**: 代理服务器的 HTTP 端点（`/sse`, `/mcp`, 以及 Admin UI，如果启用）监听的端口。默认: `3663`。**注意：** 仅在以启动 HTTP 服务器的模式运行时（例如，通过 `npm run dev:sse` 或 Docker 容器）使用。`npm run dev` 脚本以 Stdio 模式运行。
     ```bash
     export PORT=8080
     ```
--   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (可选) 用于保护代理主 `/sse` 端点的 API 密钥列表（逗号分隔，仅在 SSE 模式下生效）。如果未设置 `MCP_PROXY_SSE_ALLOWED_KEYS` 和 `MCP_PROXY_SSE_ALLOWED_TOKENS`，则禁用认证。客户端可以通过 `X-Api-Key` 头部或 `?key=` 查询参数提供其中一个密钥。
+-   **`ALLOWED_KEYS`**: (可选) 用于保护代理的 HTTP 端点（`/sse`, `/mcp`）的 API 密钥列表（逗号分隔）。如果未设置 `ALLOWED_KEYS` 和 `ALLOWED_TOKENS`，则禁用这些端点的认证。客户端可以通过 `X-Api-Key` 头部或 `?key=` 查询参数提供其中一个密钥。
     ```bash
-    export MCP_PROXY_SSE_ALLOWED_KEYS="client_key1,client_key2"
+    export ALLOWED_KEYS="client_key1,client_key2"
     ```
--   **`MCP_PROXY_SSE_ALLOWED_TOKENS`**: (可选) 用于保护代理主 `/sse` 端点的 Bearer Token 列表（逗号分隔，仅在 SSE 模式下生效）。如果未设置 `MCP_PROXY_SSE_ALLOWED_KEYS` 和 `MCP_PROXY_SSE_ALLOWED_TOKENS`，则禁用认证。客户端必须通过 `Authorization: Bearer <token>` 头部提供其中一个 Token。如果同时配置了 `MCP_PROXY_SSE_ALLOWED_KEYS` 和 `MCP_PROXY_SSE_ALLOWED_TOKENS`，Bearer Token 认证将优先。
+-   **`ALLOWED_TOKENS`**: (可选) 用于保护代理的 HTTP 端点（`/sse`, `/mcp`）的 Bearer Token 列表（逗号分隔）。如果未设置 `ALLOWED_KEYS` 和 `ALLOWED_TOKENS`，则禁用认证。客户端必须通过 `Authorization: Bearer <token>` 头部提供其中一个 Token。如果同时配置了 `ALLOWED_KEYS` 和 `ALLOWED_TOKENS`，Bearer Token 认证将优先。
     ```bash
     export MCP_PROXY_SSE_ALLOWED_TOKENS="your_bearer_token_1,your_bearer_token_2"
     ```
@@ -246,7 +257,7 @@ docker run -d \
   -e ENABLE_ADMIN_UI=true \
   -e ADMIN_USERNAME=myadmin \
   -e ADMIN_PASSWORD=yoursupersecretpassword \
-  -e MCP_PROXY_SSE_ALLOWED_KEYS="clientkey1" \
+  -e ALLOWED_KEYS="clientkey1" \
   -e TOOLS_FOLDER=/my/custom_tools_volume `# 可选: 覆盖默认的 /tools 用于服务器安装` \
   -v ./my_config:/mcp-proxy-server/config \
   -v /path/on/host/to/tools:/my/custom_tools_volume `# 如果覆盖了 TOOLS_FOLDER，请挂载对应卷` \
@@ -288,18 +299,23 @@ docker build -t mcp-proxy-server .
    ```
    - 将 `/path/to/mcp-proxy-server/build/index.js` 替换为此代理服务器项目构建后的实际入口点路径。确保 `config` 目录相对于命令运行的位置是正确的，或者在代理自己的配置中使用绝对路径。
 
-**2. 作为 SSE MCP 服务器:**
-   以 SSE 模式运行代理服务器（例如 `npm run dev:sse` 或 Docker 容器）。然后，配置您的 MCP 客户端连接到代理的 SSE 端点（例如 `http://localhost:3663/sse`）。如果代理启用了认证（通过 `MCP_PROXY_SSE_ALLOWED_KEYS` 或 `MCP_PROXY_SSE_ALLOWED_TOKENS`），客户端需要提供相应的凭据。
+**2. 作为 SSE 或 Streamable HTTP MCP 服务器:**
+   以启动其 HTTP 服务器的模式运行代理服务器（例如 `npm run dev:sse` 或 Docker 容器）。然后，配置您的 MCP 客户端连接到代理的相应端点：
+    - 对于 SSE: `http://localhost:3663/sse`
+    - 对于 Streamable HTTP: `http://localhost:3663/mcp`
 
-   **认证方式:**
-   *   **API 密钥:** 在客户端配置中提供密钥。为了更好的兼容性，建议通过 URL 查询参数 `?key=...` 提供。部分客户端也可能支持在 `X-Api-Key` 头部提供。
+   如果代理启用了认证（通过 `ALLOWED_KEYS` 或 `ALLOWED_TOKENS`），客户端需要提供相应的凭据。
+
+   **认证方式 (用于 `/sse` 和 `/mcp`):**
+   *   **API 密钥:** 在客户端配置中提供密钥。对于 `/sse` 端点，支持 URL 查询参数 `?key=...`。对于 `/sse` 和 `/mcp` 两个端点，都支持 `X-Api-Key` 头部。
    *   **Bearer Token:** 在客户端配置中设置 `Authorization: Bearer <token>` 头部。
 
-   Claude Desktop 示例 (`claude_desktop_config.json`):
+   Claude Desktop 连接 SSE 示例 (`claude_desktop_config.json`):
    ```json
    {
      "mcpServers": {
        "my-proxy-sse": {
+         "type": "sse", // 对于区分类型的客户端很重要
          "name": "MCP 代理 (SSE)",
          // 如果使用 API 密钥认证，请附加 ?key=<your_key>
          "url": "http://localhost:3663/sse?key=clientkey1"
@@ -308,6 +324,21 @@ docker build -t mcp-proxy-server .
          // "headers": {
          //   "Authorization": "Bearer your_bearer_token_1"
          // }
+       }
+     }
+   }
+   ```
+
+   通用 Streamable HTTP 客户端配置示例:
+   ```json
+   {
+     "mcpServers": {
+       "my-proxy-http": {
+         "type": "http", // 或客户端特定的标识
+         "name": "MCP 代理 (Streamable HTTP)",
+         "url": "http://localhost:3663/mcp",
+         // 认证头部将根据客户端的能力进行配置
+         // 例如: "requestInit": { "headers": { "X-Api-Key": "clientkey1" } }
        }
      }
    }

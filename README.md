@@ -14,8 +14,8 @@
 
 This server acts as a central hub for Model Context Protocol (MCP) resource servers. It can:
 
-- Connect to and manage multiple backend MCP servers (both Stdio and SSE types).
-- Expose their combined capabilities (tools, resources) through a single, unified SSE interface **or** act as a single Stdio-based MCP server itself.
+- Connect to and manage multiple backend MCP servers (Stdio, SSE, and Streamable HTTP types).
+- Expose their combined capabilities (tools, resources) through a single, unified SSE interface, a Streamable HTTP interface, **or** act as a single Stdio-based MCP server itself.
 - Handle routing of requests to the appropriate backend servers.
 - Aggregate responses if needed (though primarily acts as a proxy).
 - Support multiple simultaneous SSE client connections with optional API key authentication.
@@ -30,7 +30,7 @@ This server acts as a central hub for Model Context Protocol (MCP) resource serv
 
 ### ✨ Optional Web Admin UI (`ENABLE_ADMIN_UI=true`)
 Provides a browser-based interface for managing the proxy server configuration and connected tools. Features include:
-- **Server Configuration**: View, add, edit, and delete server entries (`mcp_server.json`). Supports both Stdio and SSE server types with relevant options (command, args, env, url, apiKey, bearerToken, install config).
+- **Server Configuration**: View, add, edit, and delete server entries (`mcp_server.json`). Supports Stdio, SSE, and HTTP server types with relevant options (type, command, args, env, url, apiKey, bearerToken, install config).
 - **Tool Configuration**: View all tools discovered from active backend servers. Enable or disable specific tools. Override the display name and description for each tool (`tool_config.json`).
 - **Live Reload**: Apply server and tool configuration changes by triggering a configuration reload without needing to restart the entire proxy server process.
 - **Stdio Server Installation**: For Stdio servers, you can define installation commands in the configuration. The Admin UI allows you to:
@@ -51,6 +51,7 @@ Example `config/mcp_server.json`:
 {
   "mcpServers": {
     "unique-server-key1": {
+      "type": "stdio",
       "name": "My Stdio Server",
       "active": true,
       "command": "/path/to/server/executable",
@@ -65,12 +66,21 @@ Example `config/mcp_server.json`:
       ]
     },
     "another-sse-server": {
+      "type": "sse",
       "name": "My SSE Server",
       "active": true,
       "url": "http://localhost:8080/sse",
       "apiKey": "sse_server_api_key"
     },
+    "http-mcp-server": {
+      "type": "http",
+      "name": "My Streamable HTTP Server",
+      "active": true,
+      "url": "http://localhost:8081/mcp",
+      "bearerToken": "some_secure_token_for_http_server"
+    },
     "stdio-default-install": {
+        "type": "stdio",
         "name": "Stdio Server with Default Install Path",
         "active": true,
         "command": "my_other_server",
@@ -84,13 +94,14 @@ Example `config/mcp_server.json`:
 -   `mcpServers`: (Required) An object where each key is a unique identifier for a backend server.
 -   `name`: (Optional) A user-friendly display name for the server (used in Admin UI).
 -   `active`: (Optional, default: `true`) Set to `false` to prevent the proxy from connecting to this server.
--   `command`: (Required for Stdio type) The command to execute the server process.
--   `args`: (Optional for Stdio type) An array of string arguments to pass to the command.
--   `env`: (Optional for Stdio type) An object of environment variables (`KEY: "value"`) to set for the server process. These are merged with the proxy server's environment.
--   `url`: (Required for SSE type) The full URL of the backend server's SSE endpoint.
--   `apiKey`: (Optional for SSE type) An API key to send in the `X-Api-Key` header when the proxy connects to *this specific backend* SSE server.
--   `bearerToken`: (Optional for SSE type) A token to send in the `Authorization: Bearer <token>` header when connecting to *this specific backend* SSE server. (If both `apiKey` and `bearerToken` are provided, `bearerToken` takes precedence).
--   `installDirectory`: (Optional for Stdio type) The absolute path where the server *itself* should be installed (e.g., `/opt/my-server-files`). Used by the Admin UI's installation feature.
+-   `type`: (Required) Specifies the transport type. Must be one of `"stdio"`, `"sse"`, or `"http"`.
+-   `command`: (Required if `type` is "stdio") The command to execute the server process.
+-   `args`: (Optional if `type` is "stdio") An array of string arguments to pass to the command.
+-   `env`: (Optional if `type` is "stdio") An object of environment variables (`KEY: "value"`) to set for the server process. These are merged with the proxy server's environment.
+-   `url`: (Required if `type` is "sse" or "http") The full URL of the backend server's endpoint (e.g., SSE endpoint for "sse", MCP endpoint for "http").
+-   `apiKey`: (Optional if `type` is "sse" or "http") An API key to send in the `X-Api-Key` header when the proxy connects to *this specific backend* server.
+-   `bearerToken`: (Optional if `type` is "sse" or "http") A token to send in the `Authorization: Bearer <token>` header when connecting to *this specific backend* server. (If both `apiKey` and `bearerToken` are provided, `bearerToken` generally takes precedence for that specific backend connection).
+-   `installDirectory`: (Optional if `type` is "stdio") The absolute path where the server *itself* should be installed (e.g., `/opt/my-server-files`). Used by the Admin UI's installation feature.
     - If provided in `mcp_server.json`, this exact path is used.
     - If omitted, the effective directory depends on the `TOOLS_FOLDER` environment variable (see Environment Variables section).
         - If `TOOLS_FOLDER` is set and not empty, the server will be installed in a subdirectory named after the server key within this folder (e.g., `${TOOLS_FOLDER}/<server_key>`).
@@ -123,15 +134,15 @@ Example `config/tool_config.json`:
 
 ### 3. Environment Variables
 
--   **`PORT`**: Port for the proxy server's main SSE endpoint (and Admin UI if enabled). Default: `3663`. **Note:** This is only used when running in SSE mode (e.g., via `npm run dev:sse` or the Docker container). The `npm run dev` script runs in Stdio mode.
+-   **`PORT`**: Port for the proxy server's HTTP-based endpoints (`/sse`, `/mcp`, and Admin UI if enabled). Default: `3663`. **Note:** This is only used when running in a mode that starts an HTTP server (e.g., via `npm run dev:sse` or the Docker container). The `npm run dev` script runs in Stdio mode.
     ```bash
     export PORT=8080
     ```
--   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (Optional) Comma-separated list of API keys to secure the proxy's main `/sse` endpoint (only applicable in SSE mode). If neither `MCP_PROXY_SSE_ALLOWED_KEYS` nor `MCP_PROXY_SSE_ALLOWED_TOKENS` are set, authentication is disabled. Clients must provide a key via `X-Api-Key` header or `?key=` query parameter.
+-   **`ALLOWED_KEYS`**: (Optional) Comma-separated list of API keys to secure the proxy's HTTP-based endpoints (`/sse`, `/mcp`). If neither `ALLOWED_KEYS` nor `ALLOWED_TOKENS` are set, authentication is disabled for these endpoints. Clients must provide a key via `X-Api-Key` header or `?key=` query parameter.
     ```bash
-    export MCP_PROXY_SSE_ALLOWED_KEYS="client_key1,client_key2"
+    export ALLOWED_KEYS="client_key1,client_key2"
     ```
--   **`MCP_PROXY_SSE_ALLOWED_TOKENS`**: (Optional) Comma-separated list of Bearer Tokens to secure the proxy's main `/sse` endpoint (only applicable in SSE mode). If neither `MCP_PROXY_SSE_ALLOWED_KEYS` nor `MCP_PROXY_SSE_ALLOWED_TOKENS` are set, authentication is disabled. Clients must provide a token via the `Authorization: Bearer <token>` header. If both `MCP_PROXY_SSE_ALLOWED_KEYS` and `MCP_PROXY_SSE_ALLOWED_TOKENS` are configured, Bearer Token authentication will be attempted first.
+-   **`ALLOWED_TOKENS`**: (Optional) Comma-separated list of Bearer Tokens to secure the proxy's HTTP-based endpoints (`/sse`, `/mcp`). If neither `ALLOWED_KEYS` nor `ALLOWED_TOKENS` are set, authentication is disabled. Clients must provide a token via the `Authorization: Bearer <token>` header. If both `ALLOWED_KEYS` and `ALLOWED_TOKENS` are configured, Bearer Token authentication will be attempted first.
     ```bash
     export MCP_PROXY_SSE_ALLOWED_TOKENS="your_bearer_token_1,your_bearer_token_2"
     ```
@@ -243,7 +254,7 @@ docker run -d \
   -e ENABLE_ADMIN_UI=true \
   -e ADMIN_USERNAME=myadmin \
   -e ADMIN_PASSWORD=yoursupersecretpassword \
-  -e MCP_PROXY_SSE_ALLOWED_KEYS="clientkey1" \
+  -e ALLOWED_KEYS="clientkey1" \
   -e TOOLS_FOLDER=/my/custom_tools_volume # Optional: Override default /tools for server installations
   -v ./my_config:/mcp-proxy-server/config \
   -v /path/on/host/to/tools:/my/custom_tools_volume `# Mount a volume for TOOLS_FOLDER if overridden` \
@@ -285,18 +296,23 @@ This proxy server can be used in two main ways:
    ```
    - Replace `/path/to/mcp-proxy-server/build/index.js` with the actual path to the built entry point of this proxy server project. Ensure the `config` directory is correctly located relative to where the command is run, or use absolute paths in the proxy's own config if needed.
 
-**2. As an SSE MCP Server:**
-   Run the proxy server in SSE mode (e.g., `npm run dev:sse` or the Docker container). Then, configure your MCP client to connect to the proxy's SSE endpoint (e.g., `http://localhost:3663/sse`). If authentication is enabled on the proxy (via `MCP_PROXY_SSE_ALLOWED_KEYS` or `MCP_PROXY_SSE_ALLOWED_TOKENS`), the client needs to provide the corresponding credentials.
+**2. As an SSE or Streamable HTTP MCP Server:**
+   Run the proxy server in a mode that starts its HTTP server (e.g., `npm run dev:sse` or the Docker container). Then, configure your MCP client to connect to the proxy's appropriate endpoint:
+    - For SSE: `http://localhost:3663/sse`
+    - For Streamable HTTP: `http://localhost:3663/mcp`
 
-   **Authentication Methods:**
-   *   **API Key:** Provide the key in the client configuration. For broader compatibility, providing it via the URL query parameter `?key=...` is recommended. Some clients might also support providing it in the `X-Api-Key` header.
+   If authentication is enabled on the proxy (via `ALLOWED_KEYS` or `ALLOWED_TOKENS`), the client needs to provide the corresponding credentials.
+
+   **Authentication Methods (for `/sse` and `/mcp`):**
+   *   **API Key:** Provide the key in the client configuration. For the `/sse` endpoint, the URL query parameter `?key=...` is supported. For both `/sse` and `/mcp`, the `X-Api-Key` header is supported.
    *   **Bearer Token:** Set the `Authorization: Bearer <token>` header in the client configuration.
 
-   Example for Claude Desktop (`claude_desktop_config.json`):
+   Example for Claude Desktop (`claude_desktop_config.json`) connecting to SSE:
    ```json
    {
      "mcpServers": {
        "my-proxy-sse": {
+         "type": "sse", // Important for clients that distinguish
          "name": "MCP Proxy (SSE)",
          // If using API Key authentication, append ?key=<your_key>
          "url": "http://localhost:3663/sse?key=clientkey1"
@@ -305,6 +321,21 @@ This proxy server can be used in two main ways:
          // "headers": {
          //   "Authorization": "Bearer your_bearer_token_1"
          // }
+       }
+     }
+   }
+   ```
+
+   Example for a generic Streamable HTTP client configuration:
+   ```json
+   {
+     "mcpServers": {
+       "my-proxy-http": {
+         "type": "http", // Or the client's specific designation
+         "name": "MCP Proxy (Streamable HTTP)",
+         "url": "http://localhost:3663/mcp",
+         // Authentication headers would be configured according to the client's capabilities
+         // e.g., "requestInit": { "headers": { "X-Api-Key": "clientkey1" } }
        }
      }
    }

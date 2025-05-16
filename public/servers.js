@@ -50,9 +50,20 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
     entryDiv.dataset.serverKey = key; 
     entryDiv.dataset.installDirManuallyEdited = 'false'; // Initialize flag
 
-    const isSSE = serverConf && typeof serverConf.url === 'string';
-    const isStdio = serverConf && typeof serverConf.command === 'string';
-    const type = isSSE ? 'SSE' : (isStdio ? 'Stdio' : 'Unknown');
+    let type = serverConf.type;
+    if (!type) { // Infer type if not explicitly set (for backward compatibility or manual JSON editing)
+        if (serverConf.url && !serverConf.command) type = 'sse';
+        else if (serverConf.command && !serverConf.url) type = 'stdio';
+        else type = 'unknown'; // Or handle as error
+    }
+
+    let displayType = 'Unknown';
+    if (type === 'sse') displayType = 'SSE';
+    else if (type === 'stdio') displayType = 'Stdio';
+    else if (type === 'http') displayType = 'HTTP';
+    else displayType = type.toUpperCase(); // Fallback for unknown but specified types
+
+    entryDiv.dataset.serverType = type; // Store the actual type
 
     const headerDiv = document.createElement('div');
     headerDiv.classList.add('server-header');
@@ -61,7 +72,7 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
         <label class="inline-label server-active-label" title="Activate/Deactivate Server">
             <input type="checkbox" class="server-active-input" ${serverConf.active !== false ? 'checked' : ''}>
         </label>
-        <h3>${serverConf.name || key} (<span class="server-type">${type}</span>)</h3>
+        <h3>${serverConf.name || key} (<span class="server-type">${displayType}</span>)</h3>
         <button class="delete-button">Delete</button>
     `;
     entryDiv.appendChild(headerDiv);
@@ -75,13 +86,14 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
         <div><label>Display Name:</label><input type="text" class="server-name-input" value="${serverConf.name || ''}"></div>
     `;
 
-    if (isSSE) {
+    if (type === 'sse' || type === 'http') {
         detailsHtml += `
             <div><label>URL:</label><input type="url" class="server-url-input" value="${serverConf.url || ''}" required></div>
             <div><label>API Key (X-Api-Key Header):</label><input type="text" class="server-apikey-input" value="${serverConf.apiKey || ''}"></div>
             <div><label>Bearer Token (Authorization Header):</label><input type="text" class="server-bearertoken-input" value="${serverConf.bearerToken || ''}"></div>
         `;
-    } else if (isStdio) {
+        // Add any type-specific fields for 'http' if they differ from 'sse' in the future
+    } else if (type === 'stdio') {
         const baseInstallPath = (typeof window.effectiveToolsFolder === 'string' && window.effectiveToolsFolder.trim() !== '') ? window.effectiveToolsFolder.trim() : 'tools';
         const defaultInstallDir = `${baseInstallPath}/${key}`;
         const installDirValue = serverConf.installDirectory !== undefined ? serverConf.installDirectory : defaultInstallDir;
@@ -101,7 +113,7 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
             <div class="install-output" id="install-output-${key}" style="display: none; white-space: pre-wrap; background-color: #222; color: #eee; padding: 10px; margin-top: 10px; max-height: 300px; overflow-y: auto; font-family: monospace;"></div>
         `;
     } else {
-         detailsHtml += `<p class="error-message">Warning: Unknown server type configuration.</p>`;
+         detailsHtml += `<p class="error-message">Warning: Unknown server type configuration ('${type}').</p>`;
     }
 
     detailsDiv.innerHTML = detailsHtml;
@@ -136,7 +148,8 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
     const installButton = detailsDiv.querySelector('.install-button');
     const installDirInput = detailsDiv.querySelector('.server-install-dir-input');
 
-    if (isStdio && installDirInput) {
+    const serverTypeFromDataset = entryDiv.dataset.serverType;
+    if (serverTypeFromDataset === 'stdio' && installDirInput) {
         installDirInput.addEventListener('input', () => {
             entryDiv.dataset.installDirManuallyEdited = 'true'; // User is manually editing
             window.isServerConfigDirty = true; 
@@ -149,9 +162,9 @@ function renderServerEntry(key, serverConf, startExpanded = false) {
     }
     
     const keyInput = detailsDiv.querySelector('.server-key-input');
-    if (isStdio && keyInput && installDirInput) {
+    if (serverTypeFromDataset === 'stdio' && keyInput && installDirInput) {
         keyInput.addEventListener('input', () => {
-            window.isServerConfigDirty = true; 
+            window.isServerConfigDirty = true;
             const currentKey = keyInput.value.trim();
             
             if (entryDiv.dataset.installDirManuallyEdited !== 'true') {
@@ -325,20 +338,22 @@ function initializeServerSaveListener() {
             const installDirInputFromForm = entryDiv.querySelector('.server-install-dir-input'); // Renamed to avoid conflict
             const installCmdsInput = entryDiv.querySelector('.server-install-cmds-input');
 
+            const serverType = entryDiv.dataset.serverType || (urlInput ? 'sse' : (commandInput ? 'stdio' : 'unknown'));
             const serverData = {
                 name: nameInput.value.trim() || undefined,
-                active: activeInput.checked
+                active: activeInput.checked,
+                type: serverType
             };
 
-            if (urlInput) { // SSE Server
+            if (serverType === 'sse' || serverType === 'http') {
                 serverData.url = urlInput.value.trim();
-                if (!serverData.url) { isValid = false; errorMsg = `URL required for SSE server "${newKey}".`; urlInput.style.border = '1px solid red'; }
+                if (!serverData.url) { isValid = false; errorMsg = `URL required for ${serverType.toUpperCase()} server "${newKey}".`; urlInput.style.border = '1px solid red'; }
                 else { urlInput.style.border = ''; }
                 const apiKey = apiKeyInput.value.trim();
                 const bearerToken = bearerTokenInput.value.trim();
                 if (apiKey) serverData.apiKey = apiKey;
                 if (bearerToken) serverData.bearerToken = bearerToken;
-            } else if (commandInput) { // Stdio Server
+            } else if (serverType === 'stdio') {
                 serverData.command = commandInput.value.trim();
                 if (!serverData.command) { isValid = false; errorMsg = `Command required for Stdio server "${newKey}".`; commandInput.style.border = '1px solid red'; }
                 else { commandInput.style.border = ''; }
@@ -347,35 +362,43 @@ function initializeServerSaveListener() {
                 serverData.env = {};
                 if (envVarsContainer) {
                     envVarsContainer.querySelectorAll('.env-var-row').forEach(row => {
-                        const key = row.querySelector('.env-key-input').value.trim();
-                        const value = row.querySelector('.env-value-input').value;
+                        const envKeyInput = row.querySelector('.env-key-input');
+                        const envValueInput = row.querySelector('.env-value-input');
+                        const key = envKeyInput.value.trim();
+                        const value = envValueInput.value; // Keep value as is, don't trim
                         if (key) {
                             if (serverData.env.hasOwnProperty(key)) {
                                 isValid = false; errorMsg = `Duplicate env key "${key}" for server "${newKey}".`;
-                                row.querySelector('.env-key-input').style.border = '1px solid red';
-                            } else { serverData.env[key] = value; row.querySelector('.env-key-input').style.border = '';}
-                        } else if (value) {
+                                envKeyInput.style.border = '1px solid red';
+                            } else { serverData.env[key] = value; envKeyInput.style.border = '';}
+                        } else if (value) { // Only error if value is present but key is not
                              isValid = false; errorMsg = `Env key cannot be empty if value is set for server "${newKey}".`;
-                             row.querySelector('.env-key-input').style.border = '1px solid red';
+                             envKeyInput.style.border = '1px solid red';
+                        } else {
+                            envKeyInput.style.border = ''; // Clear border if both are empty
                         }
                     });
                 }
-                if (!isValid) return;
+                if (!isValid) return; // Exit early if env var validation failed
                 if (installDirInputFromForm && installCmdsInput) {
                     const installDir = installDirInputFromForm.value.trim();
                     const installCmds = installCmdsInput.value.trim().split('\n').map(cmd => cmd.trim()).filter(cmd => cmd);
                     if (installDir) {
                          serverData.installDirectory = installDir;
-                         serverData.installCommands = installCmds;
-                    } else if (installCmds.length > 0) {
+                         serverData.installCommands = installCmds; // Can be empty array
+                    } else if (installCmds.length > 0) { // Only error if commands exist but dir doesn't
                          isValid = false; errorMsg = `Install Directory required if Install Commands provided for "${newKey}".`;
                          installDirInputFromForm.style.border = '1px solid red';
+                    } else {
+                        if (installDirInputFromForm) installDirInputFromForm.style.border = ''; // Clear border if both are empty
                     }
                 }
             } else {
-                 isValid = false; errorMsg = `Server "${newKey}" needs URL (SSE) or Command (Stdio).`;
-                 entryDiv.querySelector('.server-header').style.border = '1px solid red';
+                 isValid = false; errorMsg = `Unknown or unhandled server type "${serverType}" for server "${newKey}".`;
+                 const header = entryDiv.querySelector('.server-header');
+                 if(header) header.style.border = '1px solid red';
             }
+
             if (isValid) {
                  newConfig.mcpServers[newKey] = serverData;
                  const header = entryDiv.querySelector('.server-header');
@@ -426,9 +449,51 @@ function initializeServerSaveListener() {
 
 // Expose functions to be called from script.js
 window.loadServerConfig = loadServerConfig;
-window.renderServerEntry = renderServerEntry;
+window.renderServerEntry = renderServerEntry; // Keep this exposed if script.js uses it directly
 window.addInstallButtonListeners = addInstallButtonListeners;
-window.handleInstallClick = handleInstallClick; 
+window.handleInstallClick = handleInstallClick;
 window.initializeServerSaveListener = initializeServerSaveListener;
+
+// --- Helper function to add a new server entry of a specific type ---
+// This can be called by buttons in index.html (via script.js)
+window.addNewServerEntry = function(type) {
+    if (!serverListDiv) {
+        console.error("Cannot add new server: serverListDiv not found.");
+        return;
+    }
+    let newKeyNumber = 1;
+    while (window.currentServerConfig && window.currentServerConfig.mcpServers && window.currentServerConfig.mcpServers.hasOwnProperty(`new_${type}_server_${newKeyNumber}`)) {
+        newKeyNumber++;
+    }
+    const newKey = `new_${type}_server_${newKeyNumber}`;
+
+    const defaultConfig = {
+        name: `New ${type.toUpperCase()} Server`,
+        active: true,
+        type: type
+    };
+
+    if (type === 'stdio') {
+        defaultConfig.command = "";
+        defaultConfig.args = [];
+        defaultConfig.env = {};
+    } else if (type === 'sse' || type === 'http') {
+        defaultConfig.url = "";
+    }
+    
+    // Add to current config in memory (optional, but good for consistency if not saving immediately)
+    if (!window.currentServerConfig) window.currentServerConfig = { mcpServers: {} };
+    if (!window.currentServerConfig.mcpServers) window.currentServerConfig.mcpServers = {};
+    window.currentServerConfig.mcpServers[newKey] = defaultConfig;
+
+    renderServerEntry(newKey, defaultConfig, true); // Render expanded
+    window.isServerConfigDirty = true;
+    const newEntryDiv = serverListDiv.querySelector(`.server-entry[data-server-key="${newKey}"]`);
+    if (newEntryDiv) {
+        newEntryDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const keyInput = newEntryDiv.querySelector('.server-key-input');
+        if(keyInput) keyInput.focus();
+    }
+}
 
 console.log("servers.js loaded");

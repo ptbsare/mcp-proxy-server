@@ -1,5 +1,5 @@
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { StreamableHTTPServerTransport, StreamableHTTPServerTransportOptions } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"; // Import StreamableHTTPServerTransport
 import express, { Request, Response, NextFunction } from "express";
 import session from 'express-session';
 import { ServerResponse } from "node:http"; // Import ServerResponse
@@ -12,7 +12,8 @@ import { promisify } from 'util';
 import { createServer, updateBackendConnections, getCurrentProxyState } from "./mcp-proxy.js";
 import http from 'http';
 import { fileURLToPath } from 'url';
-import { Tool, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
+// Import JSONRPCMessage and JSONRPCError from types
+import { Tool, ListToolsResultSchema, JSONRPCMessage, JSONRPCError } from "@modelcontextprotocol/sdk/types.js";
 // Import loadToolConfig as well
 import { Config, loadConfig, isStdioConfig, loadToolConfig } from './config.js';
 // Import terminal router and related types/variables for shutdown
@@ -40,22 +41,23 @@ const publicPath = path.join(__dirname, '..', 'public');
 // createServer no longer returns connectedClients
 const { server, cleanup } = await createServer();
 
-const allowedKeysRaw = process.env.MCP_PROXY_SSE_ALLOWED_KEYS || "";
+const allowedKeysRaw = process.env.ALLOWED_KEYS || ""; // Renamed
 const allowedKeys = new Set(allowedKeysRaw.split(',').map(k => k.trim()).filter(k => k.length > 0));
 
-const allowedTokensRaw = process.env.MCP_PROXY_SSE_ALLOWED_TOKENS || "";
+const allowedTokensRaw = process.env.ALLOWED_TOKENS || ""; // Renamed
 const allowedTokens = new Set(allowedTokensRaw.split(',').map(t => t.trim()).filter(t => t.length > 0));
 
 const authEnabled = allowedKeys.size > 0 || allowedTokens.size > 0;
-console.log(`SSE Authentication: ${authEnabled ? `Enabled. ${allowedKeys.size} key(s) and ${allowedTokens.size} token(s) configured.` : 'Disabled.'}`);
+console.log(`MCP Endpoint Authentication: ${authEnabled ? `Enabled. ${allowedKeys.size} key(s) and ${allowedTokens.size} token(s) configured.` : 'Disabled.'}`);
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'unsafe-default-secret';
+const SESSION_SECRET_ENV = process.env.SESSION_SECRET; // Read from env
 
-if (ADMIN_PASSWORD === 'password' || SESSION_SECRET === 'unsafe-default-secret') {
-    console.warn("WARNING: Using default admin credentials or session secret. Set ADMIN_USERNAME, ADMIN_PASSWORD, and SESSION_SECRET environment variables for security.");
+if (ADMIN_PASSWORD === 'password') {
+    console.warn("WARNING: Using default admin password. Set ADMIN_PASSWORD environment variable for security.");
 }
+// SESSION_SECRET warning is handled in getSessionSecret
 
 // Read the ENABLE_ADMIN_UI environment variable.
 const rawEnableAdminUI = process.env.ENABLE_ADMIN_UI;
@@ -64,28 +66,41 @@ const rawEnableAdminUI = process.env.ENABLE_ADMIN_UI;
 const enableAdminUI = typeof rawEnableAdminUI === 'string' && (rawEnableAdminUI.toLowerCase() === 'true' || rawEnableAdminUI === '1' || rawEnableAdminUI.toLowerCase() === 'yes');
 
 async function getSessionSecret(): Promise<string> {
+    if (SESSION_SECRET_ENV && SESSION_SECRET_ENV !== 'unsafe-default-secret' && SESSION_SECRET_ENV.trim() !== '') {
+        console.log("Using session secret from SESSION_SECRET environment variable.");
+        return SESSION_SECRET_ENV;
+    }
+
     try {
         await access(SECRET_FILE_PATH);
-        const secret = await readFile(SECRET_FILE_PATH, 'utf-8');
-        console.log("Read existing session secret from file.");
-        return secret.trim();
-    } catch (error: any) {
-        if (error.code === 'ENOENT') {
-            console.log("Session secret file not found. Generating a new one...");
-            const newSecret = crypto.randomBytes(32).toString('hex');
-            try {
-                await mkdir(path.dirname(SECRET_FILE_PATH), { recursive: true });
-                await writeFile(SECRET_FILE_PATH, newSecret, { encoding: 'utf-8', mode: 0o600 });
-                console.log(`New session secret generated and saved to ${SECRET_FILE_PATH}`);
-                return newSecret;
-            } catch (writeError) {
-                console.error("FATAL: Could not write new session secret file:", writeError);
-                process.exit(1);
-            }
-        } else {
-            console.error("FATAL: Error accessing session secret file:", error);
-            process.exit(1);
+        const secretFromFile = await readFile(SECRET_FILE_PATH, 'utf-8');
+        if (secretFromFile.trim() !== '') {
+            console.log("Read existing session secret from file.");
+            return secretFromFile.trim();
         }
+        // If file exists but is empty, proceed to generate a new one.
+        console.log("Session secret file exists but is empty. Generating a new one...");
+    } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+            console.error("Error accessing session secret file, attempting to generate new:", error);
+            // Proceed to generate new one if access failed for other reasons than not found
+        } else {
+            // File does not exist, normal path to generate new.
+            console.log("Session secret file not found. Generating a new one...");
+        }
+    }
+
+    // Generate and save a new secret if not provided by env or valid file
+    const newSecret = crypto.randomBytes(32).toString('hex');
+    try {
+        await mkdir(path.dirname(SECRET_FILE_PATH), { recursive: true });
+        await writeFile(SECRET_FILE_PATH, newSecret, { encoding: 'utf-8', mode: 0o600 });
+        console.log(`New session secret generated and saved to ${SECRET_FILE_PATH}. It's recommended to set this value in the SESSION_SECRET environment variable for persistence across container restarts or deployments.`);
+        return newSecret;
+    } catch (writeError) {
+        console.error("FATAL: Could not write new session secret file:", writeError);
+        console.warn("WARNING: Falling back to a temporary, insecure session secret. Admin UI sessions will not persist.");
+        return 'temporary-insecure-secret-' + crypto.randomBytes(16).toString('hex'); // Fallback, but not ideal
     }
 }
 
@@ -484,7 +499,6 @@ if (enableAdminUI) {
 
 
 const sseTransports = new Map<string, SSEServerTransport>();
-const streamableHttpTransports = new Map<string, StreamableHTTPServerTransport>();
 
 app.get("/sse", async (req, res) => {
   const clientId = req.ip || `client-${Date.now()}`;
@@ -605,125 +619,151 @@ app.get("/sse", async (req, res) => {
   }
 });
 
-app.all("/mcp", async (req, res) => {
-  const clientId = req.ip || `mcp-client-${Date.now()}`;
-  console.log(`[${clientId}] MCP connection received for ${req.method} ${req.originalUrl}`);
-
-  // Authentication (similar to /sse)
-  if (authEnabled) {
-    let authenticated = false;
-    const authHeader = req.headers['authorization'] as string | undefined;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring('Bearer '.length).trim();
-      if (allowedTokens.has(token)) {
-        console.log(`[${clientId}] Authorized MCP connection using Bearer Token.`);
-        authenticated = true;
-      } else {
-        console.warn(`[${clientId}] Unauthorized MCP connection attempt. Invalid Bearer Token.`);
-      }
-    }
-
-    if (!authenticated && allowedKeys.size > 0) {
-      const headerKey = req.headers['x-api-key'] as string | undefined;
-      // MCP spec does not mention query param for API key, but we can keep it for consistency if desired.
-      const queryKey = req.query.key as string | undefined;
-      const providedKey = headerKey || queryKey;
-      // const providedKey = headerKey;
-
-      if (providedKey && allowedKeys.has(providedKey)) {
-        console.log(`[${clientId}] Authorized MCP connection using X-API-Key header.`);
-        authenticated = true;
-      } else if (providedKey) {
-         console.warn(`[${clientId}] Unauthorized MCP connection attempt. Invalid API Key in header.`);
-      }
-    }
-
-    if (!authenticated) {
-      console.warn(`[${clientId}] Unauthorized MCP connection attempt. No valid credentials provided.`);
-      // For POST requests with invalid/missing auth, if they are not initialization,
-      // the SDK's transport might handle specific MCP errors.
-      // For GET, a 401 is appropriate.
-      if (req.method === "GET") {
-        res.status(401).send('Unauthorized');
-        return;
-      }
-      // For POST, let the transport handle it if it's an MCP message,
-      // otherwise, if it's not an MCP message (e.g. random POST), a 401 is also fine.
-      // The SDK's transport will produce more specific errors if it's an MCP request
-      // without a session ID when one is required.
-    }
-  }
-
-  // Session ID handling for Streamable HTTP
-  // The transport itself manages session IDs based on its configuration.
-  // We need to find or create a transport instance.
-  // For Streamable HTTP, a single transport instance can handle multiple "sessions"
-  // if configured to do so (e.g. by using a session ID generator).
-  // Or, it can be stateless.
-
-  // For simplicity in this proxy, we'll create one main StreamableHTTPServerTransport
-  // and let it handle session logic internally based on its options.
-  // We'll use a fixed key "main_mcp_transport" for our map.
-  const transportKey = "main_mcp_transport";
-  let httpTransport = streamableHttpTransports.get(transportKey);
-
-  if (!httpTransport) {
-    console.log(`[${clientId}] Creating new StreamableHTTPServerTransport instance.`);
-    const transportOptions: StreamableHTTPServerTransportOptions = {
-      // sessionIdGenerator: () => crypto.randomUUID(), // Enable stateful sessions
-      sessionIdGenerator: undefined, // Start with stateless for simplicity, as per example
-      onsessioninitialized: (sessionId) => {
-        console.log(`[${clientId}] MCP Session initialized: ${sessionId}`);
-      },
-      // enableJsonResponse: false, // Default is false (SSE preferred for streaming)
-    };
-    httpTransport = new StreamableHTTPServerTransport(transportOptions);
-
-    // Connect this transport to the main MCP server instance
-    try {
-      await server.connect(httpTransport);
-      streamableHttpTransports.set(transportKey, httpTransport);
-      console.log(`[${clientId}] New StreamableHTTPServerTransport connected to server and stored.`);
-
-      httpTransport.onclose = () => {
-        console.log(`[${clientId}] StreamableHTTPServerTransport (main) closed.`);
-        streamableHttpTransports.delete(transportKey);
-        // Re-create and re-connect if needed, or handle as a permanent closure.
-      };
-      httpTransport.onerror = (error: Error) => {
-        console.error(`[${clientId}] StreamableHTTPServerTransport (main) error:`, error);
-        streamableHttpTransports.delete(transportKey);
-      };
-
-    } catch (connectError) {
-      console.error(`[${clientId}] Failed to connect new StreamableHTTPServerTransport to server:`, connectError);
-      if (!res.headersSent) {
-        res.status(500).send("Failed to initialize MCP transport");
-      }
-      return;
-    }
-  } else {
-    console.log(`[${clientId}] Using existing StreamableHTTPServerTransport instance.`);
-  }
-
-  try {
-    // Pass the request and response to the transport's handler
-    // The SDK transport will handle GET, POST, DELETE appropriately.
-    await httpTransport.handleRequest(req, res, req.body); // req.body is already parsed by express.json()
-    console.log(`[${clientId}] StreamableHTTPServerTransport successfully handled ${req.method} request.`);
-  } catch (error: any) {
-    console.error(`[${clientId}] Error in StreamableHTTPServerTransport.handleRequest:`, error);
-    if (!res.headersSent) {
-      // The transport might have already sent an error response.
-      // If not, send a generic one.
-      res.status(500).send({ error: "Failed to process MCP request via transport" });
-    }
-  }
-});
-
 // Removed GET /message?action=new_session endpoint as it's deemed unnecessary.
 // The client should rely on the sessionId provided by the 'endpoint' event from the /sse connection.
 
+app.post("/mcp", async (req, res) => {
+  const clientId = req.ip || `client-http-${Date.now()}`;
+  console.log(`[${clientId}] Received POST request on /mcp`);
+
+  // Set headers for streaming JSON response
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  // Authentication check (similar to /sse)
+  if (authEnabled) { // authEnabled is defined globally
+    let authenticated = false;
+
+    // 1. Check for Bearer Token in Authorization header
+    const authHeader = req.headers['authorization'] as string | undefined;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring('Bearer '.length).trim();
+      if (allowedTokens.has(token)) { // allowedTokens is defined globally
+        console.log(`[${clientId}] Authorized /mcp connection using Bearer Token.`);
+        authenticated = true;
+      } else {
+        console.warn(`[${clientId}] Unauthorized /mcp connection attempt. Invalid Bearer Token.`);
+      }
+    }
+
+    // 2. If not authenticated by Bearer Token, check for API Key
+    if (!authenticated && allowedKeys.size > 0) { // allowedKeys is defined globally
+      const headerKey = req.headers['x-api-key'] as string | undefined;
+      const queryKey = req.query.key as string | undefined;
+      const providedKey = headerKey || queryKey;
+
+      if (providedKey && allowedKeys.has(providedKey)) {
+        console.log(`[${clientId}] Authorized /mcp connection using ${headerKey ? 'header' : 'query'} API Key.`);
+        authenticated = true;
+      } else if (providedKey) {
+         console.warn(`[${clientId}] Unauthorized /mcp connection attempt. Invalid API Key.`);
+      }
+    }
+
+    // If authentication is enabled but no valid credentials were provided
+    if (!authenticated) {
+      console.warn(`[${clientId}] Unauthorized /mcp connection attempt. No valid credentials provided.`);
+      res.status(401).send('Unauthorized');
+      return;
+    }
+  }
+
+
+  // Create a new StreamableHTTPServerTransport for this request
+  // Use undefined sessionIdGenerator for stateless proxy
+  const httpTransport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined, // Stateless
+      enableJsonResponse: false, // Use streaming (default)
+      // eventStore: undefined // No resumability needed for proxy
+  });
+
+  // Set up the onmessage handler to forward messages to the internal server
+  httpTransport.onmessage = async (message: JSONRPCMessage) => {
+      try {
+          // Forward the message to the internal MCP server instance
+          // The internal server will call httpTransport.send() with responses/notifications
+          // The server instance created in mcp-proxy.ts should have an onmessage handler
+          // that processes incoming messages and uses its connected transports (including httpTransport)
+          // to send responses back.
+          // We don't directly call server.handleMessage here, as the transport is already connected
+          // to the server instance and will trigger the server's onmessage handler.
+          console.log(`[${clientId}] Forwarding message to internal server:`, JSON.stringify(message));
+          // The server instance's onmessage handler is set up in mcp-proxy.ts
+          // It will receive this message and process it.
+      } catch (error) {
+          console.error(`[${clientId}] Error handling message via internal server (should not happen if onmessage is set up correctly):`, error);
+          // The transport's send method should handle writing errors back if possible
+          // Or the transport's onerror might be triggered
+      }
+  };
+
+  // Set up onerror handler for the transport
+  httpTransport.onerror = (error: Error) => {
+      console.error(`[${clientId}] StreamableHTTP Transport error:`, error);
+      // The transport should ideally handle closing the response on error
+      if (!res.writableEnded) {
+          try {
+              // Attempt to send a JSON-RPC error response if headers haven't been sent
+              if (!res.headersSent) {
+                  res.writeHead(500, { 'Content-Type': 'application/json' });
+              }
+              // Construct a generic JSON-RPC error response
+              const errorResponse = {
+                  jsonrpc: "2.0",
+                  error: {
+                      code: -32603, // Internal error
+                      message: `Internal server error: ${error.message || error}`
+                  },
+                  id: null // Cannot determine original request id here easily
+              };
+              res.end(JSON.stringify(errorResponse) + '\n');
+          } catch (e) {
+              console.error(`[${clientId}] Failed to send error response after transport error:`, e);
+              if (!res.writableEnded) {
+                  res.end(); // Just close the connection as a fallback
+              }
+          }
+      }
+  };
+
+  // Set up onclose handler for the transport (client disconnect)
+  httpTransport.onclose = () => {
+      console.log(`[${clientId}] StreamableHTTP Transport closed.`);
+      // The transport should handle ending the response stream
+  };
+
+
+  try {
+      // Handle the incoming HTTP request using the transport
+      // The transport will parse the body and call onmessage
+      await httpTransport.handleRequest(req, res, req.body);
+
+      // Note: The response stream is managed by the httpTransport.
+      // We do NOT call res.end() here. The transport will end the stream
+      // when all responses are sent or on close/error.
+
+  } catch (error: any) {
+      console.error(`[${clientId}] Error during StreamableHTTP Transport handling:`, error);
+      // If an error occurs *before* the transport takes over the response,
+      // we need to send an error response here.
+      if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+              jsonrpc: "2.0",
+              error: {
+                  code: -32603, // Internal error
+                  message: `Internal server error: ${error.message || error}`
+              },
+              id: (req.body as any)?.id ?? null // Include original request id if available
+          }) + '\n');
+      } else if (!res.writableEnded) {
+           // If headers were sent but an error occurred, just end the stream
+           res.end();
+      }
+  }
+});
 app.post("/message", async (req, res) => {
   const sessionId = req.query.sessionId as string;
   console.log(`Received POST /message for Session ID: ${sessionId}`);
@@ -756,9 +796,19 @@ app.post("/message", async (req, res) => {
 const PORT = process.env.PORT || 3663;
 
 expressServer.listen(PORT, () => {
-  console.log(`SSE Server is running on http://localhost:${PORT}`);
+  const baseUrl = `http://localhost:${PORT}`;
+  console.log(`MCP Proxy Server is running.`);
+  console.log(`SSE endpoint: ${baseUrl}/sse`);
+  console.log(`Streamable HTTP (MCP) endpoint: ${baseUrl}/mcp`);
+
+  if (authEnabled && allowedKeys.size > 0) {
+    const firstKey = allowedKeys.values().next().value;
+    console.log(`Example authenticated SSE endpoint: ${baseUrl}/sse?key=${firstKey}`);
+    console.log(`Example authenticated MCP endpoint: ${baseUrl}/mcp?key=${firstKey} (or use X-Api-Key header)`);
+  }
+
   if (enableAdminUI) {
-      console.log(`Admin UI available at http://localhost:${PORT}/admin`);
+      console.log(`Admin UI available at ${baseUrl}/admin`);
   }
 });
 
@@ -766,13 +816,8 @@ const shutdown = async (signal: string) => {
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
   try {
     console.log("Closing MCP Server (disconnecting transports)...");
-    await server.close(); // This will call close on all connected transports (SSE and HTTP)
+    await server.close();
     console.log("MCP Server closed.");
-
-    // streamableHttpTransports are closed by server.close() if they were connected.
-    // Explicitly clear the map if needed, though server.close() should handle their disconnection.
-    streamableHttpTransports.clear();
-    console.log("Streamable HTTP transports cleared/closed.");
 
     console.log("Cleaning up backend clients...");
     await cleanup();

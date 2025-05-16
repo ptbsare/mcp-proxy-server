@@ -1,8 +1,9 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport, SSEClientTransportOptions } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport, StreamableHTTPClientTransportOptions } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { TransportConfig, isSSEConfig, isStdioConfig } from './config.js';
+import { TransportConfig, isSSEConfig, isStdioConfig, isHttpConfig } from './config.js';
 import { EventSource } from 'eventsource';
 
 const sleep = (time: number) => new Promise<void>(resolve => setTimeout(() => resolve(), time))
@@ -67,11 +68,32 @@ const createClient = (name: string, transportConfig: TransportConfig): { client:
         args: transportConfig.args,
         env: filteredEnv
       });
+    } else if (isHttpConfig(transportConfig)) {
+      const transportOptions: StreamableHTTPClientTransportOptions = {};
+      let customHeaders: Record<string, string> | undefined;
+
+      if (transportConfig.bearerToken) {
+        customHeaders = { 'Authorization': `Bearer ${transportConfig.bearerToken}` };
+        console.log(`  Using Bearer Token for StreamableHTTP connection to ${name}`);
+      } else if (transportConfig.apiKey) {
+        customHeaders = { 'X-Api-Key': transportConfig.apiKey };
+         console.log(`  Using X-Api-Key for StreamableHTTP connection to ${name}`);
+      }
+
+      if (customHeaders) {
+        transportOptions.requestInit = { headers: customHeaders };
+      }
+      // Note: StreamableHTTPClientTransport handles session ID internally if configured.
+      // We might pass transportConfig.sessionId if we want to force a specific one.
+      transport = new StreamableHTTPClientTransport(new URL(transportConfig.url), transportOptions);
     } else {
-      console.error(`Invalid transport configuration for server: ${name}`);
+      console.error(`Invalid or unknown transport type in configuration for server: ${name}`);
     }
   } catch (error) {
-    const transportType = isSSEConfig(transportConfig) ? 'sse' : 'stdio';
+    let transportType = 'unknown';
+    if (isSSEConfig(transportConfig)) transportType = 'sse';
+    else if (isStdioConfig(transportConfig)) transportType = 'stdio';
+    else if (isHttpConfig(transportConfig)) transportType = 'http';
     console.error(`Failed to create transport ${transportType} to ${name}:`, error);
   }
 

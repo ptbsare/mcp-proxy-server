@@ -288,13 +288,21 @@ function handleParseConfigExecute() {
                     console.warn(`Skipping invalid server entry for key ${key} in parsed JSON.`);
                     continue;
                 }
-                const isStdio = serverConf && typeof serverConf.command === 'string';
-                if (isStdio && !serverConf.installDirectory) {
+
+                // If URL is provided but type is missing, default to SSE
+                if (serverConf.url && !serverConf.type) {
+                    serverConf.type = 'sse';
+                    console.log(`Auto-filled type 'sse' for server ${key} based on URL presence.`);
+                }
+
+                // Auto-fill installDirectory for Stdio servers if missing
+                if (serverConf.type === 'stdio' && !serverConf.installDirectory) {
                     serverConf.installDirectory = `${window.effectiveToolsFolder || 'tools'}/${key}`;
                      console.log(`Auto-filled installDirectory for ${key}: ${serverConf.installDirectory}`);
                 }
+
                 if (typeof window.renderServerEntry === 'function') {
-                    window.renderServerEntry(key, serverConf, true); 
+                    window.renderServerEntry(key, serverConf, true);
                     serversAddedCount++;
                 } else {
                     console.error("renderServerEntry function not found.");
@@ -356,6 +364,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const addHttpButton = document.getElementById('add-http-server-button'); // Get the new button
+
     if (addStdioButton) {
         addStdioButton.addEventListener('click', () => {
              if (typeof window.renderServerEntry !== 'function' || typeof window.addInstallButtonListeners !== 'function') {
@@ -363,12 +373,13 @@ document.addEventListener('DOMContentLoaded', () => {
              }
              const newKey = `new_stdio_server_${Date.now()}`;
              const newServerConf = {
+                 type: "stdio", // Specify type
                  name: "New Stdio Server", active: true, command: "your_command_here", args: [], env: {},
-                 installDirectory: `${window.effectiveToolsFolder || 'tools'}/${newKey}` 
+                 installDirectory: `${window.effectiveToolsFolder || 'tools'}/${newKey}`
              };
              window.renderServerEntry(newKey, newServerConf, true);
              window.addInstallButtonListeners();
-             window.isServerConfigDirty = true; 
+             window.isServerConfigDirty = true;
              const serverList = document.getElementById('server-list');
              serverList?.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
@@ -379,10 +390,25 @@ document.addEventListener('DOMContentLoaded', () => {
                  console.error("renderServerEntry or addInstallButtonListeners not found."); return;
              }
              const newKey = `new_sse_server_${Date.now()}`;
-             const newServerConf = { name: "New SSE Server", active: true, url: "http://localhost:3663/sse" };
+             const newServerConf = { type: "sse", name: "New SSE Server", active: true, url: "http://localhost:3663/sse" }; // Specify type
              window.renderServerEntry(newKey, newServerConf, true);
              window.addInstallButtonListeners();
-             window.isServerConfigDirty = true; 
+             window.isServerConfigDirty = true;
+             const serverList = document.getElementById('server-list');
+             serverList?.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    }
+    // Add event listener for the new HTTP button
+    if (addHttpButton) {
+        addHttpButton.addEventListener('click', () => {
+             if (typeof window.renderServerEntry !== 'function' || typeof window.addInstallButtonListeners !== 'function') {
+                 console.error("renderServerEntry or addInstallButtonListeners not found."); return;
+             }
+             const newKey = `new_http_server_${Date.now()}`;
+             const newServerConf = { type: "http", name: "New HTTP Server", active: true, url: "http://localhost:3663/mcp" }; // Specify type
+             window.renderServerEntry(newKey, newServerConf, true);
+             window.addInstallButtonListeners();
+             window.isServerConfigDirty = true;
              const serverList = document.getElementById('server-list');
              serverList?.lastChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });

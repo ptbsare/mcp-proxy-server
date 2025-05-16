@@ -2,6 +2,7 @@ import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 
 export type TransportConfigStdio = {
+  type: 'stdio';
   name?: string;
   command: string;
   args?: string[];
@@ -12,6 +13,7 @@ export type TransportConfigStdio = {
 }
 
 export type TransportConfigSSE = {
+  type: 'sse';
   name?: string;
   url: string;
   active?: boolean;
@@ -19,7 +21,18 @@ export type TransportConfigSSE = {
   bearerToken?: string;
 }
 
-export type TransportConfig = (TransportConfigStdio | TransportConfigSSE) & { name?: string, active?: boolean };
+export type TransportConfigHTTP = {
+  type: 'http';
+  name?: string;
+  url: string;
+  active?: boolean;
+  apiKey?: string; // Assuming similar auth for now
+  bearerToken?: string; // Assuming similar auth for now
+  // Add any HTTP specific options if needed, e.g., custom headers not covered by apiKey/bearerToken
+  // requestInit?: RequestInit; // This is a more generic way if SDK supports it directly in config
+}
+
+export type TransportConfig = (TransportConfigStdio | TransportConfigSSE | TransportConfigHTTP) & { name?: string, active?: boolean, type: 'stdio' | 'sse' | 'http' };
 
 export interface Config {
   mcpServers: Record<string, TransportConfig>;
@@ -38,11 +51,15 @@ export interface ToolConfig {
 
 
 export function isSSEConfig(config: TransportConfig): config is TransportConfigSSE {
-  return (config as TransportConfigSSE).url !== undefined;
+  return config.type === 'sse';
 }
 
 export function isStdioConfig(config: TransportConfig): config is TransportConfigStdio {
-  return (config as TransportConfigStdio).command !== undefined;
+  return config.type === 'stdio';
+}
+
+export function isHttpConfig(config: TransportConfig): config is TransportConfigHTTP {
+  return config.type === 'http';
 }
 
 
