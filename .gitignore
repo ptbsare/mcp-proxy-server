@@ -11,6 +11,7 @@ config/.session_secret
 browser-*
 chatmcp
 typescript-sdk
+inspector
 tools/**
 config/mcp_server.json
 config/tool_config.json

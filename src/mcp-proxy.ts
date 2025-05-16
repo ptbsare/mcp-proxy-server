@@ -197,6 +197,7 @@ export const createServer = async () => {
 
   // --- Request Handlers ---
   // These handlers now rely on the maps populated by updateBackendConnections
+  // Note: InitializeRequest is handled by the SDK's Server default behavior.
 
   server.setRequestHandler(ListToolsRequestSchema, async (request) => {
     console.log("Received tools/list request - applying overrides from config");

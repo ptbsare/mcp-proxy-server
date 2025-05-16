@@ -1,5 +1,5 @@
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"; // Import StreamableHTTPServerTransport
+import { StreamableHTTPServerTransport, StreamableHTTPServerTransportOptions } from "@modelcontextprotocol/sdk/server/streamableHttp.js"; // Import StreamableHTTPServerTransport and options
 import express, { Request, Response, NextFunction } from "express";
 import session from 'express-session';
 import { ServerResponse } from "node:http"; // Import ServerResponse
@@ -38,8 +38,43 @@ const TOOL_CONFIG_PATH = path.resolve(__dirname, '..', 'config', 'tool_config.js
 const SECRET_FILE_PATH = path.resolve(__dirname, '..', 'config', '.session_secret');
 const publicPath = path.join(__dirname, '..', 'public');
 
+const sseTransports = new Map<string, SSEServerTransport>();
+const streamableHttpTransports = new Map<string, StreamableHTTPServerTransport>(); // Define this map earlier
+
 // createServer no longer returns connectedClients
 const { server, cleanup } = await createServer();
+
+// Create and connect the main StreamableHTTPServerTransport for the /mcp endpoint at startup
+const mcpEndpointTransportKey = "main_mcp_transport";
+const mcpTransportOptions: StreamableHTTPServerTransportOptions = {
+    sessionIdGenerator: undefined, // Stateless, as per current setup
+    onsessioninitialized: (sessionId: string) => { // Added type for sessionId
+        // This should not be called if sessionIdGenerator is undefined
+        console.log(`[MCP Endpoint] Main transport session initialized: ${sessionId}`);
+    },
+    enableJsonResponse: false, // Revert to default SSE streaming for POST responses
+};
+const mainHttpTransport = new StreamableHTTPServerTransport(mcpTransportOptions);
+
+try {
+    await server.connect(mainHttpTransport);
+    streamableHttpTransports.set(mcpEndpointTransportKey, mainHttpTransport);
+    console.log("Main StreamableHTTPServerTransport for /mcp endpoint connected and ready.");
+
+    // Standard onclose and onerror handlers
+    mainHttpTransport.onclose = () => {
+        console.log("Main StreamableHTTPServerTransport for /mcp endpoint closed."); // Restored simpler log
+        streamableHttpTransports.delete(mcpEndpointTransportKey);
+    };
+    mainHttpTransport.onerror = (error: Error) => {
+        console.error("Main StreamableHTTPServerTransport for /mcp endpoint error:", error); // Restored simpler log
+        streamableHttpTransports.delete(mcpEndpointTransportKey);
+    };
+
+} catch (e) {
+    console.error("FATAL: Could not connect main StreamableHTTPServerTransport for /mcp endpoint at startup:", e);
+    process.exit(1); // Exit if the main transport cannot be set up
+}
 
 const allowedKeysRaw = process.env.ALLOWED_KEYS || ""; // Renamed
 const allowedKeys = new Set(allowedKeysRaw.split(',').map(k => k.trim()).filter(k => k.length > 0));
@@ -498,8 +533,6 @@ if (enableAdminUI) {
 } // End of the main if (enableAdminUI) block
 
 
-const sseTransports = new Map<string, SSEServerTransport>();
-
 app.get("/sse", async (req, res) => {
   const clientId = req.ip || `client-${Date.now()}`;
   console.log(`[${clientId}] SSE connection received`);
@@ -626,12 +659,6 @@ app.post("/mcp", async (req, res) => {
   const clientId = req.ip || `client-http-${Date.now()}`;
   console.log(`[${clientId}] Received POST request on /mcp`);
 
-  // Set headers for streaming JSON response
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Transfer-Encoding', 'chunked');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
   // Authentication check (similar to /sse)
   if (authEnabled) { // authEnabled is defined globally
     let authenticated = false;
@@ -665,84 +692,37 @@ app.post("/mcp", async (req, res) => {
     // If authentication is enabled but no valid credentials were provided
     if (!authenticated) {
       console.warn(`[${clientId}] Unauthorized /mcp connection attempt. No valid credentials provided.`);
-      res.status(401).send('Unauthorized');
+      res.status(401).send('Unauthorized'); // Send 401 and return
       return;
     }
   }
 
+  // Use the pre-initialized mainHttpTransport
+  const httpTransport = streamableHttpTransports.get(mcpEndpointTransportKey);
 
-  // Create a new StreamableHTTPServerTransport for this request
-  // Use undefined sessionIdGenerator for stateless proxy
-  const httpTransport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // Stateless
-      enableJsonResponse: false, // Use streaming (default)
-      // eventStore: undefined // No resumability needed for proxy
-  });
+  if (!httpTransport) {
+    console.error(`[${clientId}] FATAL: Main StreamableHTTPServerTransport for /mcp not found during request! This should have been initialized at startup.`);
+    if (!res.headersSent) {
+        res.status(500).send("MCP transport not available");
+    }
+    return;
+  }
+  
+  // The mainHttpTransport's onmessage, onerror, onclose are already set up during startup
+  // and connected to the main 'server' instance.
+  // We don't need to (and shouldn't) override them here.
 
-  // Set up the onmessage handler to forward messages to the internal server
-  httpTransport.onmessage = async (message: JSONRPCMessage) => {
-      try {
-          // Forward the message to the internal MCP server instance
-          // The internal server will call httpTransport.send() with responses/notifications
-          // The server instance created in mcp-proxy.ts should have an onmessage handler
-          // that processes incoming messages and uses its connected transports (including httpTransport)
-          // to send responses back.
-          // We don't directly call server.handleMessage here, as the transport is already connected
-          // to the server instance and will trigger the server's onmessage handler.
-          console.log(`[${clientId}] Forwarding message to internal server:`, JSON.stringify(message));
-          // The server instance's onmessage handler is set up in mcp-proxy.ts
-          // It will receive this message and process it.
-      } catch (error) {
-          console.error(`[${clientId}] Error handling message via internal server (should not happen if onmessage is set up correctly):`, error);
-          // The transport's send method should handle writing errors back if possible
-          // Or the transport's onerror might be triggered
-      }
-  };
-
-  // Set up onerror handler for the transport
-  httpTransport.onerror = (error: Error) => {
-      console.error(`[${clientId}] StreamableHTTP Transport error:`, error);
-      // The transport should ideally handle closing the response on error
-      if (!res.writableEnded) {
-          try {
-              // Attempt to send a JSON-RPC error response if headers haven't been sent
-              if (!res.headersSent) {
-                  res.writeHead(500, { 'Content-Type': 'application/json' });
-              }
-              // Construct a generic JSON-RPC error response
-              const errorResponse = {
-                  jsonrpc: "2.0",
-                  error: {
-                      code: -32603, // Internal error
-                      message: `Internal server error: ${error.message || error}`
-                  },
-                  id: null // Cannot determine original request id here easily
-              };
-              res.end(JSON.stringify(errorResponse) + '\n');
-          } catch (e) {
-              console.error(`[${clientId}] Failed to send error response after transport error:`, e);
-              if (!res.writableEnded) {
-                  res.end(); // Just close the connection as a fallback
-              }
-          }
-      }
-  };
-
-  // Set up onclose handler for the transport (client disconnect)
-  httpTransport.onclose = () => {
-      console.log(`[${clientId}] StreamableHTTP Transport closed.`);
-      // The transport should handle ending the response stream
-  };
-
-
+  console.log(`[${clientId}] About to call mainHttpTransport.handleRequest for ${req.method} ${req.originalUrl}`);
   try {
-      // Handle the incoming HTTP request using the transport
-      // The transport will parse the body and call onmessage
+      // Handle the incoming HTTP request using the pre-configured mainHttpTransport.
+      // This will parse the body and, if successful, trigger the mainHttpTransport.onmessage
+      // (which is our wrapper that calls the Server instance's handler).
       await httpTransport.handleRequest(req, res, req.body);
 
-      // Note: The response stream is managed by the httpTransport.
-      // We do NOT call res.end() here. The transport will end the stream
-      // when all responses are sent or on close/error.
+      // The response stream (res) is now managed by httpTransport.
+      // It will send SSE events (or a direct JSON if it were configured for it)
+      // and will end the response when appropriate.
+      console.log(`[${clientId}] mainHttpTransport.handleRequest completed for ${req.method} ${req.originalUrl}. Response stream is now managed by the transport.`);
 
   } catch (error: any) {
       console.error(`[${clientId}] Error during StreamableHTTP Transport handling:`, error);
