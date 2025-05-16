@@ -5,8 +5,13 @@
 
 *   **🌐 Web UI Management:** Easily manage all connected MCP servers through an intuitive web interface (optional, requires enabling).
 *   **🔧 Granular Tool Control:** Enable or disable individual tools, and override names/descriptions via the Web UI.
-*   **🔒 Dual SSE Authentication:** Secure your SSE endpoint with flexible authentication options (`Authorization: Bearer <token>` or `X-API-Key: <key>`).
-*   **🔄 Improved SSE Session Handling**: More robust handling of client reconnections, relying on server-sent `endpoint` events for session synchronization.
+*   **🛡️ Flexible Endpoint Authentication:** Secure your HTTP-based endpoints (`/sse`, `/mcp`) with flexible authentication options (`Authorization: Bearer <token>` or `X-API-Key: <key>`).
+*   **🔄 Robust Session Handling & Concurrency**:
+    *   Improved SSE session handling for client reconnections (relying on server-sent `endpoint` events) and support for concurrent connections.
+    *   Streamable HTTP endpoint (`/mcp`) also supports concurrent client interactions.
+*   **🚀 Versatile MCP Operations (Server & Proxy):**
+    *   **Acts as a Proxy:** Connects to and aggregates multiple backend MCP servers of various types (Stdio, SSE, Streamable HTTP).
+    *   **Acts as a Server:** Exposes these aggregated capabilities through its own Streamable HTTP (`/mcp`) and SSE (`/sse`) endpoints. Can also run in a pure Stdio mode.
 *   **✨ Real-time Install Output**: Monitor Stdio server installation progress (stdout/stderr) directly in the Web UI.
 *   **✨ Web Terminal**: Access a command-line terminal within the Admin UI for direct server interaction (optional, use with caution due to security risks).
 
