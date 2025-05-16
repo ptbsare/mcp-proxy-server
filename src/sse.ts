@@ -41,7 +41,12 @@ const { server, cleanup } = await createServer();
 
 const allowedKeysRaw = process.env.MCP_PROXY_SSE_ALLOWED_KEYS || "";
 const allowedKeys = new Set(allowedKeysRaw.split(',').map(k => k.trim()).filter(k => k.length > 0));
-console.log(`SSE Authentication: ${allowedKeys.size > 0 ? `${allowedKeys.size} key(s) configured.` : 'No keys configured (disabled).'}`);
+
+const allowedTokensRaw = process.env.MCP_PROXY_SSE_ALLOWED_TOKENS || "";
+const allowedTokens = new Set(allowedTokensRaw.split(',').map(t => t.trim()).filter(t => t.length > 0));
+
+const authEnabled = allowedKeys.size > 0 || allowedTokens.size > 0;
+console.log(`SSE Authentication: ${authEnabled ? `Enabled. ${allowedKeys.size} key(s) and ${allowedTokens.size} token(s) configured.` : 'Disabled.'}`);
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
@@ -483,17 +488,41 @@ app.get("/sse", async (req, res) => {
   const clientId = req.ip || `client-${Date.now()}`;
   console.log(`[${clientId}] SSE connection received`);
 
-  if (allowedKeys.size > 0) {
-    const headerKey = req.headers['x-api-key'] as string | undefined;
-    const queryKey = req.query.key as string | undefined;
-    const providedKey = headerKey || queryKey;
+  if (authEnabled) {
+    let authenticated = false;
 
-    if (!providedKey || !allowedKeys.has(providedKey)) {
-      console.warn(`[${clientId}] Unauthorized SSE connection attempt. Key provided: ${providedKey ? "'"+providedKey+"'" : 'None'}`);
+    // 1. Check for Bearer Token in Authorization header
+    const authHeader = req.headers['authorization'] as string | undefined;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring('Bearer '.length).trim();
+      if (allowedTokens.has(token)) {
+        console.log(`[${clientId}] Authorized SSE connection using Bearer Token.`);
+        authenticated = true;
+      } else {
+        console.warn(`[${clientId}] Unauthorized SSE connection attempt. Invalid Bearer Token.`);
+      }
+    }
+
+    // 2. If not authenticated by Bearer Token, check for API Key
+    if (!authenticated && allowedKeys.size > 0) {
+      const headerKey = req.headers['x-api-key'] as string | undefined;
+      const queryKey = req.query.key as string | undefined;
+      const providedKey = headerKey || queryKey;
+
+      if (providedKey && allowedKeys.has(providedKey)) {
+        console.log(`[${clientId}] Authorized SSE connection using ${headerKey ? 'header' : 'query'} API Key.`);
+        authenticated = true;
+      } else if (providedKey) {
+         console.warn(`[${clientId}] Unauthorized SSE connection attempt. Invalid API Key.`);
+      }
+    }
+
+    // If authentication is enabled but no valid credentials were provided
+    if (!authenticated) {
+      console.warn(`[${clientId}] Unauthorized SSE connection attempt. No valid credentials provided.`);
       res.status(401).send('Unauthorized');
       return;
     }
-    console.log(`[${clientId}] Authorized SSE connection using ${headerKey ? 'header' : 'query'} key.`);
   }
 
 

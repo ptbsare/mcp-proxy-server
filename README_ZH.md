@@ -6,9 +6,9 @@
 
 *   **🌐 Web UI 管理:** 通过直观的网页界面轻松管理所有连接的 MCP 服务器（可选功能，需要启用）。
 *   **🔧 精细化工具控制:** 通过 Web UI 启用或禁用由已连接 MCP 服务器提供的单个工具，并可覆盖其名称/描述。
-*   **🔒 双重 SSE 认证:** 使用灵活的认证选项保护您的 SSE 端点：
-    *   `Authorization: Bearer <token>`
-    *   `X-API-Key: <key>`
+*   **🔒 多种 SSE 认证方式:** 使用灵活的认证选项保护您的 SSE 端点：
+    *   `Authorization: Bearer <token>` 头部
+    *   `X-API-Key: <key>` 头部 或 `?key=<key>` 查询参数
 *   **🔄 改进的 SSE 会话处理**: 更健壮地处理客户端重连，依赖服务器发送的 `endpoint` 事件进行会话同步。
 *   **✨ 实时安装输出**: 在 Web UI 中直接监控 Stdio 服务器的安装进度（stdout/stderr）。
 *   **✨ 网页终端**: 在 Admin UI 中访问命令行终端，用于直接与服务器环境交互（可选功能，请谨慎使用，存在安全风险）。
@@ -130,9 +130,13 @@
     ```bash
     export PORT=8080
     ```
--   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (可选) 用于保护代理主 `/sse` 端点的 API 密钥列表（逗号分隔，仅在 SSE 模式下生效）。如果未设置，则禁用认证。客户端必须通过 `X-Api-Key` 头部或 `?key=` 查询参数提供其中一个密钥。
+-   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (可选) 用于保护代理主 `/sse` 端点的 API 密钥列表（逗号分隔，仅在 SSE 模式下生效）。如果未设置 `MCP_PROXY_SSE_ALLOWED_KEYS` 和 `MCP_PROXY_SSE_ALLOWED_TOKENS`，则禁用认证。客户端可以通过 `X-Api-Key` 头部或 `?key=` 查询参数提供其中一个密钥。
     ```bash
     export MCP_PROXY_SSE_ALLOWED_KEYS="client_key1,client_key2"
+    ```
+-   **`MCP_PROXY_SSE_ALLOWED_TOKENS`**: (可选) 用于保护代理主 `/sse` 端点的 Bearer Token 列表（逗号分隔，仅在 SSE 模式下生效）。如果未设置 `MCP_PROXY_SSE_ALLOWED_KEYS` 和 `MCP_PROXY_SSE_ALLOWED_TOKENS`，则禁用认证。客户端必须通过 `Authorization: Bearer <token>` 头部提供其中一个 Token。如果同时配置了 `MCP_PROXY_SSE_ALLOWED_KEYS` 和 `MCP_PROXY_SSE_ALLOWED_TOKENS`，Bearer Token 认证将优先。
+    ```bash
+    export MCP_PROXY_SSE_ALLOWED_TOKENS="your_bearer_token_1,your_bearer_token_2"
     ```
 -   **`ENABLE_ADMIN_UI`**: (可选) 设置为 `true` 以启用 Web Admin UI（仅在 SSE 模式下生效）。默认: `false`。
     ```bash
@@ -285,7 +289,11 @@ docker build -t mcp-proxy-server .
    - 将 `/path/to/mcp-proxy-server/build/index.js` 替换为此代理服务器项目构建后的实际入口点路径。确保 `config` 目录相对于命令运行的位置是正确的，或者在代理自己的配置中使用绝对路径。
 
 **2. 作为 SSE MCP 服务器:**
-   以 SSE 模式运行代理服务器（例如 `npm run dev:sse` 或 Docker 容器）。然后，配置您的 MCP 客户端连接到代理的 SSE 端点（例如 `http://localhost:3663/sse`）。如果代理启用了 API 密钥认证 (`MCP_PROXY_SSE_ALLOWED_KEYS`)，请在客户端配置中提供密钥，为了更好的兼容性，建议通过 URL 查询参数 `?key=...` 提供。
+   以 SSE 模式运行代理服务器（例如 `npm run dev:sse` 或 Docker 容器）。然后，配置您的 MCP 客户端连接到代理的 SSE 端点（例如 `http://localhost:3663/sse`）。如果代理启用了认证（通过 `MCP_PROXY_SSE_ALLOWED_KEYS` 或 `MCP_PROXY_SSE_ALLOWED_TOKENS`），客户端需要提供相应的凭据。
+
+   **认证方式:**
+   *   **API 密钥:** 在客户端配置中提供密钥。为了更好的兼容性，建议通过 URL 查询参数 `?key=...` 提供。部分客户端也可能支持在 `X-Api-Key` 头部提供。
+   *   **Bearer Token:** 在客户端配置中设置 `Authorization: Bearer <token>` 头部。
 
    Claude Desktop 示例 (`claude_desktop_config.json`):
    ```json
@@ -293,10 +301,13 @@ docker build -t mcp-proxy-server .
      "mcpServers": {
        "my-proxy-sse": {
          "name": "MCP 代理 (SSE)",
-         // 如果启用了认证，请附加 ?key=<your_key>
+         // 如果使用 API 密钥认证，请附加 ?key=<your_key>
          "url": "http://localhost:3663/sse?key=clientkey1"
-         // apiKey 字段可能不被所有客户端支持用于 SSE 认证
-         // "apiKey": "clientkey1"
+         // 如果使用 Bearer Token 认证，客户端配置方式可能因客户端而异。
+         // 例如，某些客户端可能支持设置自定义头部：
+         // "headers": {
+         //   "Authorization": "Bearer your_bearer_token_1"
+         // }
        }
      }
    }

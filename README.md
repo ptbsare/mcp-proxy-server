@@ -127,9 +127,13 @@ Example `config/tool_config.json`:
     ```bash
     export PORT=8080
     ```
--   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (Optional) Comma-separated list of API keys to secure the proxy's main `/sse` endpoint (only applicable in SSE mode). If not set, authentication is disabled. Clients must provide a key via `X-Api-Key` header or `?key=` query parameter.
+-   **`MCP_PROXY_SSE_ALLOWED_KEYS`**: (Optional) Comma-separated list of API keys to secure the proxy's main `/sse` endpoint (only applicable in SSE mode). If neither `MCP_PROXY_SSE_ALLOWED_KEYS` nor `MCP_PROXY_SSE_ALLOWED_TOKENS` are set, authentication is disabled. Clients must provide a key via `X-Api-Key` header or `?key=` query parameter.
     ```bash
     export MCP_PROXY_SSE_ALLOWED_KEYS="client_key1,client_key2"
+    ```
+-   **`MCP_PROXY_SSE_ALLOWED_TOKENS`**: (Optional) Comma-separated list of Bearer Tokens to secure the proxy's main `/sse` endpoint (only applicable in SSE mode). If neither `MCP_PROXY_SSE_ALLOWED_KEYS` nor `MCP_PROXY_SSE_ALLOWED_TOKENS` are set, authentication is disabled. Clients must provide a token via the `Authorization: Bearer <token>` header. If both `MCP_PROXY_SSE_ALLOWED_KEYS` and `MCP_PROXY_SSE_ALLOWED_TOKENS` are configured, Bearer Token authentication will be attempted first.
+    ```bash
+    export MCP_PROXY_SSE_ALLOWED_TOKENS="your_bearer_token_1,your_bearer_token_2"
     ```
 -   **`ENABLE_ADMIN_UI`**: (Optional) Set to `true` to enable the Web Admin UI (only applicable in SSE mode). Default: `false`.
     ```bash
@@ -282,7 +286,11 @@ This proxy server can be used in two main ways:
    - Replace `/path/to/mcp-proxy-server/build/index.js` with the actual path to the built entry point of this proxy server project. Ensure the `config` directory is correctly located relative to where the command is run, or use absolute paths in the proxy's own config if needed.
 
 **2. As an SSE MCP Server:**
-   Run the proxy server in SSE mode (e.g., `npm run dev:sse` or the Docker container). Then, configure your MCP client to connect to the proxy's SSE endpoint. If API key authentication is enabled on the proxy (`MCP_PROXY_SSE_ALLOWED_KEYS`), provide the key in the client configuration, preferably via the URL query parameter `?key=...` for broader client compatibility.
+   Run the proxy server in SSE mode (e.g., `npm run dev:sse` or the Docker container). Then, configure your MCP client to connect to the proxy's SSE endpoint (e.g., `http://localhost:3663/sse`). If authentication is enabled on the proxy (via `MCP_PROXY_SSE_ALLOWED_KEYS` or `MCP_PROXY_SSE_ALLOWED_TOKENS`), the client needs to provide the corresponding credentials.
+
+   **Authentication Methods:**
+   *   **API Key:** Provide the key in the client configuration. For broader compatibility, providing it via the URL query parameter `?key=...` is recommended. Some clients might also support providing it in the `X-Api-Key` header.
+   *   **Bearer Token:** Set the `Authorization: Bearer <token>` header in the client configuration.
 
    Example for Claude Desktop (`claude_desktop_config.json`):
    ```json
@@ -290,10 +298,13 @@ This proxy server can be used in two main ways:
      "mcpServers": {
        "my-proxy-sse": {
          "name": "MCP Proxy (SSE)",
-         // Append ?key=<your_key> if authentication is enabled
+         // If using API Key authentication, append ?key=<your_key>
          "url": "http://localhost:3663/sse?key=clientkey1"
-         // The apiKey field might not be supported by all clients for SSE auth
-         // "apiKey": "clientkey1"
+         // If using Bearer Token authentication, the client configuration method may vary.
+         // For example, some clients might support setting custom headers:
+         // "headers": {
+         //   "Authorization": "Bearer your_bearer_token_1"
+         // }
        }
      }
    }
