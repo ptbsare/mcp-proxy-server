@@ -1,4 +1,5 @@
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport, StreamableHTTPServerTransportOptions } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express, { Request, Response, NextFunction } from "express";
 import session from 'express-session';
 import { ServerResponse } from "node:http"; // Import ServerResponse
@@ -483,6 +484,7 @@ if (enableAdminUI) {
 
 
 const sseTransports = new Map<string, SSEServerTransport>();
+const streamableHttpTransports = new Map<string, StreamableHTTPServerTransport>();
 
 app.get("/sse", async (req, res) => {
   const clientId = req.ip || `client-${Date.now()}`;
@@ -603,6 +605,122 @@ app.get("/sse", async (req, res) => {
   }
 });
 
+app.all("/mcp", async (req, res) => {
+  const clientId = req.ip || `mcp-client-${Date.now()}`;
+  console.log(`[${clientId}] MCP connection received for ${req.method} ${req.originalUrl}`);
+
+  // Authentication (similar to /sse)
+  if (authEnabled) {
+    let authenticated = false;
+    const authHeader = req.headers['authorization'] as string | undefined;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring('Bearer '.length).trim();
+      if (allowedTokens.has(token)) {
+        console.log(`[${clientId}] Authorized MCP connection using Bearer Token.`);
+        authenticated = true;
+      } else {
+        console.warn(`[${clientId}] Unauthorized MCP connection attempt. Invalid Bearer Token.`);
+      }
+    }
+
+    if (!authenticated && allowedKeys.size > 0) {
+      const headerKey = req.headers['x-api-key'] as string | undefined;
+      // MCP spec does not mention query param for API key, but we can keep it for consistency if desired.
+      const queryKey = req.query.key as string | undefined;
+      const providedKey = headerKey || queryKey;
+      // const providedKey = headerKey;
+
+      if (providedKey && allowedKeys.has(providedKey)) {
+        console.log(`[${clientId}] Authorized MCP connection using X-API-Key header.`);
+        authenticated = true;
+      } else if (providedKey) {
+         console.warn(`[${clientId}] Unauthorized MCP connection attempt. Invalid API Key in header.`);
+      }
+    }
+
+    if (!authenticated) {
+      console.warn(`[${clientId}] Unauthorized MCP connection attempt. No valid credentials provided.`);
+      // For POST requests with invalid/missing auth, if they are not initialization,
+      // the SDK's transport might handle specific MCP errors.
+      // For GET, a 401 is appropriate.
+      if (req.method === "GET") {
+        res.status(401).send('Unauthorized');
+        return;
+      }
+      // For POST, let the transport handle it if it's an MCP message,
+      // otherwise, if it's not an MCP message (e.g. random POST), a 401 is also fine.
+      // The SDK's transport will produce more specific errors if it's an MCP request
+      // without a session ID when one is required.
+    }
+  }
+
+  // Session ID handling for Streamable HTTP
+  // The transport itself manages session IDs based on its configuration.
+  // We need to find or create a transport instance.
+  // For Streamable HTTP, a single transport instance can handle multiple "sessions"
+  // if configured to do so (e.g. by using a session ID generator).
+  // Or, it can be stateless.
+
+  // For simplicity in this proxy, we'll create one main StreamableHTTPServerTransport
+  // and let it handle session logic internally based on its options.
+  // We'll use a fixed key "main_mcp_transport" for our map.
+  const transportKey = "main_mcp_transport";
+  let httpTransport = streamableHttpTransports.get(transportKey);
+
+  if (!httpTransport) {
+    console.log(`[${clientId}] Creating new StreamableHTTPServerTransport instance.`);
+    const transportOptions: StreamableHTTPServerTransportOptions = {
+      // sessionIdGenerator: () => crypto.randomUUID(), // Enable stateful sessions
+      sessionIdGenerator: undefined, // Start with stateless for simplicity, as per example
+      onsessioninitialized: (sessionId) => {
+        console.log(`[${clientId}] MCP Session initialized: ${sessionId}`);
+      },
+      // enableJsonResponse: false, // Default is false (SSE preferred for streaming)
+    };
+    httpTransport = new StreamableHTTPServerTransport(transportOptions);
+
+    // Connect this transport to the main MCP server instance
+    try {
+      await server.connect(httpTransport);
+      streamableHttpTransports.set(transportKey, httpTransport);
+      console.log(`[${clientId}] New StreamableHTTPServerTransport connected to server and stored.`);
+
+      httpTransport.onclose = () => {
+        console.log(`[${clientId}] StreamableHTTPServerTransport (main) closed.`);
+        streamableHttpTransports.delete(transportKey);
+        // Re-create and re-connect if needed, or handle as a permanent closure.
+      };
+      httpTransport.onerror = (error: Error) => {
+        console.error(`[${clientId}] StreamableHTTPServerTransport (main) error:`, error);
+        streamableHttpTransports.delete(transportKey);
+      };
+
+    } catch (connectError) {
+      console.error(`[${clientId}] Failed to connect new StreamableHTTPServerTransport to server:`, connectError);
+      if (!res.headersSent) {
+        res.status(500).send("Failed to initialize MCP transport");
+      }
+      return;
+    }
+  } else {
+    console.log(`[${clientId}] Using existing StreamableHTTPServerTransport instance.`);
+  }
+
+  try {
+    // Pass the request and response to the transport's handler
+    // The SDK transport will handle GET, POST, DELETE appropriately.
+    await httpTransport.handleRequest(req, res, req.body); // req.body is already parsed by express.json()
+    console.log(`[${clientId}] StreamableHTTPServerTransport successfully handled ${req.method} request.`);
+  } catch (error: any) {
+    console.error(`[${clientId}] Error in StreamableHTTPServerTransport.handleRequest:`, error);
+    if (!res.headersSent) {
+      // The transport might have already sent an error response.
+      // If not, send a generic one.
+      res.status(500).send({ error: "Failed to process MCP request via transport" });
+    }
+  }
+});
+
 // Removed GET /message?action=new_session endpoint as it's deemed unnecessary.
 // The client should rely on the sessionId provided by the 'endpoint' event from the /sse connection.
 
@@ -648,8 +766,13 @@ const shutdown = async (signal: string) => {
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
   try {
     console.log("Closing MCP Server (disconnecting transports)...");
-    await server.close();
+    await server.close(); // This will call close on all connected transports (SSE and HTTP)
     console.log("MCP Server closed.");
+
+    // streamableHttpTransports are closed by server.close() if they were connected.
+    // Explicitly clear the map if needed, though server.close() should handle their disconnection.
+    streamableHttpTransports.clear();
+    console.log("Streamable HTTP transports cleared/closed.");
 
     console.log("Cleaning up backend clients...");
     await cleanup();
