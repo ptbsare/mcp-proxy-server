@@ -39,44 +39,15 @@ const SECRET_FILE_PATH = path.resolve(__dirname, '..', 'config', '.session_secre
 const publicPath = path.join(__dirname, '..', 'public');
 
 const sseTransports = new Map<string, SSEServerTransport>();
-const streamableHttpTransports = new Map<string, StreamableHTTPServerTransport>(); // Define this map earlier
+const streamableHttpTransports = new Map<string, StreamableHTTPServerTransport>();
 
 // createServer no longer returns connectedClients
 const { server, cleanup } = await createServer();
 
-// Create and connect the main StreamableHTTPServerTransport for the /mcp endpoint at startup
-const mcpEndpointTransportKey = "main_mcp_transport";
-const mcpTransportOptions: StreamableHTTPServerTransportOptions = {
-    sessionIdGenerator: undefined, // Stateless, as per current setup
-    onsessioninitialized: (sessionId: string) => { // Added type for sessionId
-        // This should not be called if sessionIdGenerator is undefined
-        console.log(`[MCP Endpoint] Main transport session initialized: ${sessionId}`);
-    },
-    enableJsonResponse: false, // Revert to default SSE streaming for POST responses
-};
-const mainHttpTransport = new StreamableHTTPServerTransport(mcpTransportOptions);
+// No longer creating a single mainHttpTransport at startup for /mcp.
+// Transports for /mcp will be created dynamically per session.
 
-try {
-    await server.connect(mainHttpTransport);
-    streamableHttpTransports.set(mcpEndpointTransportKey, mainHttpTransport);
-    console.log("Main StreamableHTTPServerTransport for /mcp endpoint connected and ready.");
-
-    // Standard onclose and onerror handlers
-    mainHttpTransport.onclose = () => {
-        console.log("Main StreamableHTTPServerTransport for /mcp endpoint closed."); // Restored simpler log
-        streamableHttpTransports.delete(mcpEndpointTransportKey);
-    };
-    mainHttpTransport.onerror = (error: Error) => {
-        console.error("Main StreamableHTTPServerTransport for /mcp endpoint error:", error); // Restored simpler log
-        streamableHttpTransports.delete(mcpEndpointTransportKey);
-    };
-
-} catch (e) {
-    console.error("FATAL: Could not connect main StreamableHTTPServerTransport for /mcp endpoint at startup:", e);
-    process.exit(1); // Exit if the main transport cannot be set up
-}
-
-const allowedKeysRaw = process.env.ALLOWED_KEYS || ""; // Renamed
+const allowedKeysRaw = process.env.ALLOWED_KEYS || "";
 const allowedKeys = new Set(allowedKeysRaw.split(',').map(k => k.trim()).filter(k => k.length > 0));
 
 const allowedTokensRaw = process.env.ALLOWED_TOKENS || ""; // Renamed
@@ -655,93 +626,199 @@ app.get("/sse", async (req, res) => {
 // Removed GET /message?action=new_session endpoint as it's deemed unnecessary.
 // The client should rely on the sessionId provided by the 'endpoint' event from the /sse connection.
 
-app.post("/mcp", async (req, res) => {
+app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SSE and POST for messages
   const clientId = req.ip || `client-http-${Date.now()}`;
-  console.log(`[${clientId}] Received POST request on /mcp`);
+  console.log(`[${clientId}] Received ${req.method} request on /mcp`);
 
   // Authentication check (similar to /sse)
-  if (authEnabled) { // authEnabled is defined globally
+  if (authEnabled) {
     let authenticated = false;
-
-    // 1. Check for Bearer Token in Authorization header
     const authHeader = req.headers['authorization'] as string | undefined;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring('Bearer '.length).trim();
-      if (allowedTokens.has(token)) { // allowedTokens is defined globally
+      if (allowedTokens.has(token)) {
         console.log(`[${clientId}] Authorized /mcp connection using Bearer Token.`);
         authenticated = true;
       } else {
-        console.warn(`[${clientId}] Unauthorized /mcp connection attempt. Invalid Bearer Token.`);
+        console.warn(`[${clientId}] Unauthorized /mcp (Bearer) for ${req.method}. Invalid Token.`);
       }
     }
-
-    // 2. If not authenticated by Bearer Token, check for API Key
-    if (!authenticated && allowedKeys.size > 0) { // allowedKeys is defined globally
+    if (!authenticated && allowedKeys.size > 0) {
       const headerKey = req.headers['x-api-key'] as string | undefined;
       const queryKey = req.query.key as string | undefined;
       const providedKey = headerKey || queryKey;
-
       if (providedKey && allowedKeys.has(providedKey)) {
         console.log(`[${clientId}] Authorized /mcp connection using ${headerKey ? 'header' : 'query'} API Key.`);
         authenticated = true;
       } else if (providedKey) {
-         console.warn(`[${clientId}] Unauthorized /mcp connection attempt. Invalid API Key.`);
+         console.warn(`[${clientId}] Unauthorized /mcp (API Key) for ${req.method}. Invalid Key.`);
       }
     }
-
-    // If authentication is enabled but no valid credentials were provided
     if (!authenticated) {
-      console.warn(`[${clientId}] Unauthorized /mcp connection attempt. No valid credentials provided.`);
-      res.status(401).send('Unauthorized'); // Send 401 and return
+      console.warn(`[${clientId}] Unauthorized /mcp for ${req.method}. No valid credentials.`);
+      res.status(401).send('Unauthorized');
       return;
     }
   }
 
-  // Use the pre-initialized mainHttpTransport
-  const httpTransport = streamableHttpTransports.get(mcpEndpointTransportKey);
+  let httpTransport: StreamableHTTPServerTransport | undefined;
+  const clientProvidedSessionId = req.headers['mcp-session-id'] as string | undefined;
+  let transportSessionIdToUse: string | undefined = clientProvidedSessionId;
+
+  if (clientProvidedSessionId) {
+    httpTransport = streamableHttpTransports.get(clientProvidedSessionId);
+    if (!httpTransport) {
+      console.warn(`[${clientId}] /mcp: Client provided Mcp-Session-Id '${clientProvidedSessionId}', but no active transport found. Responding 404.`);
+      if (!res.headersSent) {
+        res.status(404).json({
+            jsonrpc: "2.0",
+            error: { code: -32000, message: `Session not found for Mcp-Session-Id: ${clientProvidedSessionId}` },
+            id: (req.body as any)?.id ?? null
+        });
+      }
+      return;
+    }
+    console.log(`[${clientId}] /mcp: Using existing transport for Mcp-Session-Id: ${clientProvidedSessionId}`);
+  } else {
+    // No Mcp-Session-Id from client, or it's an InitializeRequest that might not have one yet.
+    // Create a new transport. The transport itself will generate a session ID.
+    console.log(`[${clientId}] /mcp: No Mcp-Session-Id from client, or new session. Creating new StreamableHTTPServerTransport.`);
+    const tempGeneratedIdForEarlyMap = `pending-${crypto.randomBytes(8).toString('hex')}`;
+    let capturedHttpTransportInstance: StreamableHTTPServerTransport | null = null; // To ensure closure captures the correct instance
+
+    const newTransportOptions: StreamableHTTPServerTransportOptions = {
+        sessionIdGenerator: () => crypto.randomUUID(), // Use crypto.randomUUID for session ID generation
+        enableJsonResponse: false,
+        onsessioninitialized: (sdkGeneratedSessionId: string) => {
+            console.log(`[${clientId}] /mcp: SDK 'onsessioninitialized' called. SDK Session ID: ${sdkGeneratedSessionId}`);
+            if (capturedHttpTransportInstance) {
+                // The SDK has now initialized the session and `capturedHttpTransportInstance.sessionId` should be set.
+                // Verify it matches sdkGeneratedSessionId for sanity.
+                if (capturedHttpTransportInstance.sessionId !== sdkGeneratedSessionId) {
+                    console.warn(`[${clientId}] /mcp: Discrepancy! sdkGeneratedSessionId (${sdkGeneratedSessionId}) vs transport.sessionId (${capturedHttpTransportInstance.sessionId}). Using sdkGeneratedSessionId.`);
+                }
+                const finalSessionId = sdkGeneratedSessionId; // Use the ID from the callback
+
+                if (streamableHttpTransports.has(tempGeneratedIdForEarlyMap)) {
+                    const transportInstanceFromMap = streamableHttpTransports.get(tempGeneratedIdForEarlyMap);
+                    if (transportInstanceFromMap === capturedHttpTransportInstance) {
+                        streamableHttpTransports.delete(tempGeneratedIdForEarlyMap);
+                        streamableHttpTransports.set(finalSessionId, capturedHttpTransportInstance);
+                        if (transportSessionIdToUse === tempGeneratedIdForEarlyMap) {
+                            transportSessionIdToUse = finalSessionId;
+                        }
+                        console.log(`[${clientId}] /mcp: Transport map updated. Temp ID '${tempGeneratedIdForEarlyMap}' replaced with final '${finalSessionId}'. Active: ${streamableHttpTransports.size}`);
+                    } else {
+                        console.error(`[${clientId}] /mcp: Mismatch during onsessioninitialized! Temp ID ${tempGeneratedIdForEarlyMap} found but instance differs.`);
+                        if (!streamableHttpTransports.has(finalSessionId) || streamableHttpTransports.get(finalSessionId) !== capturedHttpTransportInstance) {
+                           streamableHttpTransports.set(finalSessionId, capturedHttpTransportInstance);
+                           console.warn(`[${clientId}] /mcp: Force-mapped transport with final ID '${finalSessionId}' due to instance mismatch.`);
+                        }
+                    }
+                } else {
+                    if (!streamableHttpTransports.has(finalSessionId) || streamableHttpTransports.get(finalSessionId) !== capturedHttpTransportInstance) {
+                        streamableHttpTransports.set(finalSessionId, capturedHttpTransportInstance);
+                        if (transportSessionIdToUse === tempGeneratedIdForEarlyMap) {
+                           transportSessionIdToUse = finalSessionId;
+                        }
+                        console.log(`[${clientId}] /mcp: Transport (re)added to map with final ID '${finalSessionId}' (temp not found or instance check). Active: ${streamableHttpTransports.size}`);
+                    }
+                }
+            } else {
+                 console.error(`[${clientId}] /mcp: onsessioninitialized called but capturedHttpTransportInstance is null. SDK SessionId: ${sdkGeneratedSessionId}`);
+            }
+        },
+    };
+
+    httpTransport = new StreamableHTTPServerTransport(newTransportOptions);
+    capturedHttpTransportInstance = httpTransport; // Capture for the onsessioninitialized closure
+    
+    // Store with a temporary ID. This will be updated by onsessioninitialized when the SDK provides the actual session ID.
+    transportSessionIdToUse = tempGeneratedIdForEarlyMap;
+    streamableHttpTransports.set(tempGeneratedIdForEarlyMap, httpTransport);
+    console.log(`[${clientId}] /mcp: New transport created. Stored with temp ID: ${tempGeneratedIdForEarlyMap}. Active transports: ${streamableHttpTransports.size}`);
+
+    const currentTransportForHandlers = httpTransport; // Use this specific instance in handlers
+
+    currentTransportForHandlers.onerror = (error: Error) => {
+      // Use currentTransportForHandlers.sessionId if available, otherwise fallback to transportSessionIdToUse (which might be temp or final)
+      const idToClean = currentTransportForHandlers.sessionId || transportSessionIdToUse;
+      console.error(`[${clientId}] /mcp: StreamableHTTPServerTransport error for session related to ${idToClean}:`, error);
+      
+      if (streamableHttpTransports.get(tempGeneratedIdForEarlyMap) === currentTransportForHandlers) {
+        streamableHttpTransports.delete(tempGeneratedIdForEarlyMap);
+      }
+      if (currentTransportForHandlers.sessionId && streamableHttpTransports.get(currentTransportForHandlers.sessionId) === currentTransportForHandlers) {
+        streamableHttpTransports.delete(currentTransportForHandlers.sessionId);
+      }
+      console.log(`[${clientId}] /mcp: Transport for session related to ${idToClean} removed due to error. Active: ${streamableHttpTransports.size}`);
+    };
+
+    currentTransportForHandlers.onclose = () => {
+      const idToClean = currentTransportForHandlers.sessionId || transportSessionIdToUse;
+      console.log(`[${clientId}] /mcp: StreamableHTTPServerTransport closed for session related to ${idToClean}.`);
+      if (streamableHttpTransports.get(tempGeneratedIdForEarlyMap) === currentTransportForHandlers) {
+        streamableHttpTransports.delete(tempGeneratedIdForEarlyMap);
+      }
+      if (currentTransportForHandlers.sessionId && streamableHttpTransports.get(currentTransportForHandlers.sessionId) === currentTransportForHandlers) {
+        streamableHttpTransports.delete(currentTransportForHandlers.sessionId);
+      }
+      console.log(`[${clientId}] /mcp: Transport for session related to ${idToClean} removed on close. Active: ${streamableHttpTransports.size}`);
+    };
+
+    try {
+      await server.connect(currentTransportForHandlers);
+      console.log(`[${clientId}] /mcp: New transport (temp ID: ${transportSessionIdToUse}, awaiting final SDK sessionId) connected to server.`);
+    } catch (connectError: any) {
+      console.error(`[${clientId}] /mcp: Failed to connect new transport to server:`, connectError);
+      streamableHttpTransports.delete(tempGeneratedIdForEarlyMap); // Clean up temp entry
+      if (!res.headersSent) {
+        res.status(500).json({
+            jsonrpc: "2.0",
+            error: { code: -32001, message: `Failed to connect new MCP transport: ${connectError.message}` },
+            id: (req.body as any)?.id ?? null
+        });
+      }
+      return;
+    }
+  }
 
   if (!httpTransport) {
-    console.error(`[${clientId}] FATAL: Main StreamableHTTPServerTransport for /mcp not found during request! This should have been initialized at startup.`);
+    // This case should ideally be caught earlier if clientProvidedSessionId was present but not found.
+    // If it's a new session and httpTransport somehow didn't get created.
+    console.error(`[${clientId}] /mcp: Transport is unexpectedly undefined before handling request.`);
     if (!res.headersSent) {
-        res.status(500).send("MCP transport not available");
+        res.status(500).json({
+            jsonrpc: "2.0",
+            error: { code: -32002, message: "MCP transport not available for session." },
+            id: (req.body as any)?.id ?? null
+        });
     }
     return;
   }
-  
-  // The mainHttpTransport's onmessage, onerror, onclose are already set up during startup
-  // and connected to the main 'server' instance.
-  // We don't need to (and shouldn't) override them here.
 
-  console.log(`[${clientId}] About to call mainHttpTransport.handleRequest for ${req.method} ${req.originalUrl}`);
+  console.log(`[${clientId}] /mcp: About to call transport.handleRequest for session ${transportSessionIdToUse || httpTransport.sessionId} - Method: ${req.method}`);
   try {
-      // Handle the incoming HTTP request using the pre-configured mainHttpTransport.
-      // This will parse the body and, if successful, trigger the mainHttpTransport.onmessage
-      // (which is our wrapper that calls the Server instance's handler).
-      await httpTransport.handleRequest(req, res, req.body);
-
-      // The response stream (res) is now managed by httpTransport.
-      // It will send SSE events (or a direct JSON if it were configured for it)
-      // and will end the response when appropriate.
-      console.log(`[${clientId}] mainHttpTransport.handleRequest completed for ${req.method} ${req.originalUrl}. Response stream is now managed by the transport.`);
-
+    // The SDK's StreamableHTTPServerTransport.handleRequest should:
+    // - For new sessions (e.g., on InitializeRequest), establish the session,
+    //   generate/obtain a session ID, and ensure Mcp-Session-Id header is in the response.
+    // - For existing sessions, use the provided Mcp-Session-Id.
+    // - Handle both POST (for client messages) and GET (for server-initiated SSE streams).
+    await httpTransport.handleRequest(req, res, req.body);
+    console.log(`[${clientId}] /mcp: transport.handleRequest completed for session ${transportSessionIdToUse || httpTransport.sessionId}. Response stream managed by transport.`);
   } catch (error: any) {
-      console.error(`[${clientId}] Error during StreamableHTTP Transport handling:`, error);
-      // If an error occurs *before* the transport takes over the response,
-      // we need to send an error response here.
-      if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-              jsonrpc: "2.0",
-              error: {
-                  code: -32603, // Internal error
-                  message: `Internal server error: ${error.message || error}`
-              },
-              id: (req.body as any)?.id ?? null // Include original request id if available
-          }) + '\n');
-      } else if (!res.writableEnded) {
-           // If headers were sent but an error occurred, just end the stream
-           res.end();
-      }
+    const idToLog = transportSessionIdToUse || httpTransport.sessionId;
+    console.error(`[${clientId}] /mcp: Error during transport.handleRequest for session ${idToLog}:`, error);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: `Internal server error during MCP request handling: ${error.message || error}` },
+        id: (req.body as any)?.id ?? null
+      }) + '\n');
+    } else if (!res.writableEnded) {
+      res.end();
+    }
   }
 });
 app.post("/message", async (req, res) => {
