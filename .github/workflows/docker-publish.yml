@@ -37,35 +37,41 @@ jobs:
             const packageVersion = "${{ steps.get_version.outputs.version }}";
             console.log(`Package version: ${packageVersion}`);
 
-            try {
-              const latestRelease = await github.rest.repos.getLatestRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-              });
+            if (context.eventName === 'workflow_dispatch') {
+              console.log('Manual trigger detected. Skipping version check and forcing build.');
+              core.setOutput('needs_build', 'true');
+            } else {
+              console.log('Push trigger detected. Comparing package version with latest release tag.');
+              try {
+                const latestRelease = await github.rest.repos.getLatestRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                });
 
-              const latestTag = latestRelease.data.tag_name;
-              console.log(`Latest release tag: ${latestTag}`);
+                const latestTag = latestRelease.data.tag_name;
+                console.log(`Latest release tag: ${latestTag}`);
 
-              // Assuming tag is like 'v1.2.3', remove 'v' prefix
-              const latestVersion = latestTag.startsWith('v') ? latestTag.substring(1) : latestTag;
-              console.log(`Latest release version: ${latestVersion}`);
+                // Assuming tag is like 'v1.2.3', remove 'v' prefix
+                const latestVersion = latestTag.startsWith('v') ? latestTag.substring(1) : latestTag;
+                console.log(`Latest release version: ${latestVersion}`);
 
-              if (packageVersion !== latestVersion) {
-                console.log('Version mismatch. Build needed.');
-                core.setOutput('needs_build', 'true');
-              } else {
-                console.log('Versions match. No build needed.');
-                core.setOutput('needs_build', 'false');
-              }
-            } catch (error) {
-              // Handle case where no releases exist yet or API error
-              if (error.status === 404) {
-                console.log('No releases found. Build needed.');
-                core.setOutput('needs_build', 'true');
-              } else {
-                console.error('Error fetching latest release:', error);
-                core.setFailed(`Error fetching latest release: ${error.message}`);
-                core.setOutput('needs_build', 'false'); // Don't build on error
+                if (packageVersion !== latestVersion) {
+                  console.log('Version mismatch. Build needed.');
+                  core.setOutput('needs_build', 'true');
+                } else {
+                  console.log('Versions match. No build needed.');
+                  core.setOutput('needs_build', 'false');
+                }
+              } catch (error) {
+                // Handle case where no releases exist yet or API error
+                if (error.status === 404) {
+                  console.log('No releases found. Build needed.');
+                  core.setOutput('needs_build', 'true');
+                } else {
+                  console.error('Error fetching latest release:', error);
+                  core.setFailed(`Error fetching latest release: ${error.message}`);
+                  core.setOutput('needs_build', 'false'); // Don't build on error
+                }
               }
             }
 
@@ -96,6 +102,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          platforms: linux/amd64,linux/aarch64
           # Dockerfile already modified by "Append ENTRYPOINT..." step for standalone
           push: true
           tags: |
@@ -110,6 +117,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          platforms: linux/amd64,linux/aarch64
           # Dockerfile already modified by "Append ENTRYPOINT..." step for standalone
           push: true
           tags: |
