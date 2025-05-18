@@ -351,7 +351,6 @@ docker build -t mcp-proxy-server .
 
 使用 [MCP Inspector](https://github.com/modelcontextprotocol/inspector) 进行通信调试（主要用于 Stdio 模式）：
 ```bash
-#请先安装MCP Inspector
 npm run inspector
 ```
 此脚本会使用 inspector 包装已构建的服务器 (`build/index.js`) 来执行。通过控制台中提供的 URL 访问 inspector UI。对于 SSE 模式，可以使用标准的浏览器开发者工具检查网络请求。

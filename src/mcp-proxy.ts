@@ -183,7 +183,7 @@ export const createServer = async () => {
   // Create the main proxy server instance
   const server = new Server(
     {
-      name: "mcp-proxy-server",
+      name: "mcp_proxy_server",
       version: "1.0.0", // Consider updating version dynamically
     },
     {

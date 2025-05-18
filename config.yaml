@@ -1,5 +1,5 @@
 name: "MCP Proxy Server"
-version: "0.3.2"
+version: "0.3.3"
 slug: "mcp_proxy_server"
 description: "A central hub for Model Context Protocol (MCP) servers. Manages multiple backend MCP servers (Stdio/SSE), exposing their combined tools and resources via a unified SSE interface or as a Stdio server. Features Web UI for server/tool management, real-time installation monitoring, and optional web terminal."
 arch:
