@@ -129,8 +129,8 @@ function renderToolEntry(toolKey, toolDefinition, toolConfig, isConfigOnly = fal
         <div class="tool-details">
             <div>
                 <label>Exposed Tool Name Override (Optional):</label>
-                <input type="text" class="tool-exposedname-input" value="${exposedNameOverride}" placeholder="Default: ${toolKey}">
                 <small>Overrides the name exposed to AI models. Must be unique and contain only letters, numbers, _, - (not starting with a number).</small>
+                <input type="text" class="tool-exposedname-input" value="${exposedNameOverride}" placeholder="${toolKey}">
             </div>
             <div>
                 <label>Exposed Description Override (Optional):</label>
