@@ -124,7 +124,7 @@ jobs:
             ghcr.io/${{ github.repository }}/mcp-proxy-server:${{ steps.get_version.outputs.version }}-bundled-mcpservers-playwright
             ghcr.io/${{ github.repository }}/mcp-proxy-server:latest-bundled-mcpservers-playwright
           build-args: |
-            PRE_INSTALLED_PIP_PACKAGES_ARG=mcp-server-time markitdown-mcp mcp-proxy
+            PRE_INSTALLED_PIP_PACKAGES_ARG=markitdown-mcp mcp-proxy
             PRE_INSTALLED_NPM_PACKAGES_ARG=g-search-mcp fetcher-mcp playwright time-mcp mcp-trends-hub @adenot/mcp-google-search edgeone-pages-mcp @modelcontextprotocol/server-filesystem mcp-server-weibo @variflight-ai/variflight-mcp @baidumap/mcp-server-baidu-map @modelcontextprotocol/inspector
             PRE_INSTALLED_INIT_COMMAND_ARG=playwright install --with-deps chromium
           cache-from: type=gha
