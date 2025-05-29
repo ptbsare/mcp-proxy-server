@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iputils-ping \
     tini \
     gnupg \
+    golang \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -66,7 +67,7 @@ RUN if echo "$BUILD_FROM" | grep -q "home-assistant"; then \
     echo "Standalone build detected (BUILD_FROM: $BUILD_FROM). Skipping addon-specific OS setup."; \
     fi
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm bun
 
 RUN if [ -n "$PRE_INSTALLED_PIP_PACKAGES_ARG" ]; then \
       echo "Installing pre-defined PIP packages: $PRE_INSTALLED_PIP_PACKAGES_ARG" && \
