@@ -300,29 +300,6 @@ export const getCurrentProxyState = () => {
     return { tools };
 };
 
-
-// --- Server Creation ---
-export const createServer = async () => {
-  // Load initial config
-  const initialServerConfig = await loadConfig();
-  const initialToolConfig = await loadToolConfig();
-
-  // Initialize currentActiveServersConfig from the initial load
-  const initialActiveServers: Record<string, TransportConfig> = {};
-    for (const serverKey in initialServerConfig.mcpServers) {
-        if (Object.prototype.hasOwnProperty.call(initialServerConfig.mcpServers, serverKey)) {
-            const serverConf = initialServerConfig.mcpServers[serverKey];
-            const isActive = !(serverConf.active === false || String(serverConf.active).toLowerCase() === 'false');
-            if (isActive) {
-                initialActiveServers[serverKey] = serverConf;
-            }
-        }
-    }
-  currentActiveServersConfig = initialActiveServers;
-
-  // Perform initial connection and map population
-  await updateBackendConnections(initialServerConfig, initialToolConfig);
-
 // Helper function to identify connection errors
 const isConnectionError = (err: any): boolean => {
   if (err && err.message) {
