@@ -174,6 +174,105 @@ Example `config/tool_config.json`:
     export TOOLS_FOLDER=/srv/mcp_tools
     ```
 
+### 4. Proxy Behavior Configuration (Error Handling & Retries)
+These settings are configured within `config/mcp_server.json` under a top-level `proxy` object.
+
+Example:
+```json
+{
+  "mcpServers": {
+    "...": "..."
+  },
+  "proxy": {
+    "retrySseToolCallOnDisconnect": true,
+    "retryHttpToolCall": true,
+    "httpToolCallMaxRetries": 2,
+    "httpToolCallRetryDelayBaseMs": 300
+  }
+}
+```
+See the "Enhanced Reliability Features" section for details on these options.
+
+
+## Enhanced Reliability Features
+
+The MCP Proxy Server includes features to improve its resilience and the reliability of interactions with backend MCP services.
+
+### 1. Error Propagation
+The proxy server ensures that errors originating from backend MCP services are consistently propagated to the requesting client. These errors are formatted as standard JSON-RPC error responses, making it easier for clients to handle them uniformly.
+
+### 2. SSE Connection Retry for Tool Calls
+When a `tools/call` operation is made to an SSE-based backend server, and the underlying connection is lost or experiences an error, the proxy server will automatically attempt to:
+1.  Re-establish the connection to the SSE backend.
+2.  If reconnection is successful, it will retry the original `tools/call` request **once**.
+
+This behavior helps mitigate transient network issues that might temporarily disrupt SSE connections.
+
+**Configuration:**
+This feature is controlled by the `retrySseToolCallOnDisconnect` property within the `proxy` object in your `config/mcp_server.json` file.
+-   **`retrySseToolCallOnDisconnect`** (boolean):
+    -   Set to `true` to enable the automatic reconnect and retry.
+    -   Set to `false` to disable this feature.
+    -   **Default:** `true`.
+
+**Example (`config/mcp_server.json`):**
+```json
+{
+  "mcpServers": {
+    "my-sse-server": {
+      "type": "sse",
+      "url": "http://example.com/sse-endpoint"
+      // ... other server config
+    }
+  },
+  "proxy": {
+    "retrySseToolCallOnDisconnect": true
+    // ... other proxy settings
+  }
+}
+```
+
+### 3. HTTP Request Retry for Tool Calls
+For `tools/call` operations directed to HTTP-based backend servers, the proxy implements a retry mechanism for connection errors (e.g., "failed to fetch", network timeouts).
+
+**Retry Mechanism:**
+If an initial HTTP request fails due to a connection error, the proxy will retry the request using an exponential backoff strategy. This means the delay before each subsequent retry attempt increases exponentially, with a small amount of jitter (randomness) added to prevent thundering herd scenarios.
+
+**Configuration:**
+These settings are configured within the `proxy` object in your `config/mcp_server.json` file.
+
+-   **`retryHttpToolCall`** (boolean):
+    -   Set to `true` to enable retries for HTTP tool calls.
+    -   Set to `false` to disable this feature.
+    -   **Default:** `true`.
+
+-   **`httpToolCallMaxRetries`** (number):
+    -   Specifies the maximum number of retry attempts *after* the initial failed attempt. For example, if set to `2`, there will be one initial attempt and up to two retry attempts, totaling a maximum of three attempts.
+    -   **Default:** `2`.
+
+-   **`httpToolCallRetryDelayBaseMs`** (number):
+    -   The base delay in milliseconds used in the exponential backoff calculation. The delay before the *n*-th retry (0-indexed) is roughly `httpToolCallRetryDelayBaseMs * (2^n) + jitter`.
+    -   **Default:** `300` (milliseconds).
+
+**Example (`config/mcp_server.json`):**
+```json
+{
+  "mcpServers": {
+    "my-http-server": {
+      "type": "http",
+      "url": "http://example.com/mcp-endpoint"
+      // ... other server config
+    }
+  },
+  "proxy": {
+    "retryHttpToolCall": true,
+    "httpToolCallMaxRetries": 3,
+    "httpToolCallRetryDelayBaseMs": 500
+    // ... other proxy settings
+  }
+}
+```
+
 ## Development
 
 Install dependencies:

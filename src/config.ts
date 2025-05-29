@@ -34,8 +34,16 @@ export type TransportConfigHTTP = {
 
 export type TransportConfig = (TransportConfigStdio | TransportConfigSSE | TransportConfigHTTP) & { name?: string, active?: boolean, type: 'stdio' | 'sse' | 'http' };
 
+export interface ProxySettings {
+  retrySseToolCallOnDisconnect?: boolean;
+  retryHttpToolCall?: boolean;
+  httpToolCallMaxRetries?: number;
+  httpToolCallRetryDelayBaseMs?: number;
+}
+
 export interface Config {
   mcpServers: Record<string, TransportConfig>;
+  proxy?: ProxySettings;
 }
 
 
@@ -74,10 +82,52 @@ export const loadConfig = async (): Promise<Config> => {
         throw new Error('Invalid config format: mcpServers object not found.');
     }
 
-    return parsedConfig;
+    // Initialize proxy settings with defaults
+    const defaultProxySettings: Required<ProxySettings> = {
+        retrySseToolCallOnDisconnect: true,
+        retryHttpToolCall: true,
+        httpToolCallMaxRetries: 2,
+        httpToolCallRetryDelayBaseMs: 300,
+    };
+
+    const configWithDefaults: Config = {
+      ...parsedConfig,
+      proxy: {
+        ...defaultProxySettings,
+        ...(parsedConfig.proxy || {}), // Spread any existing proxy settings to override defaults
+      }
+    };
+
+    // Ensure specific boolean and number types if they exist in parsedConfig.proxy
+    if (parsedConfig.proxy) {
+        if (typeof parsedConfig.proxy.retrySseToolCallOnDisconnect === 'boolean') {
+            configWithDefaults.proxy!.retrySseToolCallOnDisconnect = parsedConfig.proxy.retrySseToolCallOnDisconnect;
+        }
+        if (typeof parsedConfig.proxy.retryHttpToolCall === 'boolean') {
+            configWithDefaults.proxy!.retryHttpToolCall = parsedConfig.proxy.retryHttpToolCall;
+        }
+        if (typeof parsedConfig.proxy.httpToolCallMaxRetries === 'number') {
+            configWithDefaults.proxy!.httpToolCallMaxRetries = parsedConfig.proxy.httpToolCallMaxRetries;
+        }
+        if (typeof parsedConfig.proxy.httpToolCallRetryDelayBaseMs === 'number') {
+            configWithDefaults.proxy!.httpToolCallRetryDelayBaseMs = parsedConfig.proxy.httpToolCallRetryDelayBaseMs;
+        }
+    }
+
+    console.log("Loaded config with proxy settings:", configWithDefaults.proxy);
+    return configWithDefaults;
   } catch (error) {
     console.error(`Error loading config/mcp_server.json:`, error);
-    return { mcpServers: {} };
+    // Return default structure in case of error
+    return {
+      mcpServers: {},
+      proxy: { // Ensure all defaults are present here too
+        retrySseToolCallOnDisconnect: true,
+        retryHttpToolCall: true,
+        httpToolCallMaxRetries: 2,
+        httpToolCallRetryDelayBaseMs: 300,
+      }
+    };
   }
 };
 
