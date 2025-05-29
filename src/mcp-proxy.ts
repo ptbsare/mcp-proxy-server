@@ -343,18 +343,6 @@ export const createServer = async () => {
         }
     }
   currentActiveServersConfig = initialActiveServers;
-  // Initialize currentActiveServersConfig AND currentProxyConfig from the initial load
-  const initialActiveServers: Record<string, TransportConfig> = {};
-    for (const serverKey in initialServerConfig.mcpServers) {
-        if (Object.prototype.hasOwnProperty.call(initialServerConfig.mcpServers, serverKey)) {
-            const serverConf = initialServerConfig.mcpServers[serverKey];
-            const isActive = !(serverConf.active === false || String(serverConf.active).toLowerCase() === 'false');
-            if (isActive) {
-                initialActiveServers[serverKey] = serverConf;
-            }
-        }
-    }
-  currentActiveServersConfig = initialActiveServers;
   // Update currentProxyConfig using initialServerConfig and global defaults
   currentProxyConfig = {
       ...defaultProxySettingsFull,
