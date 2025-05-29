@@ -32,13 +32,25 @@ const resourceToClientMap = new Map<string, ConnectedClient>();
 const promptToClientMap = new Map<string, ConnectedClient>();
 let currentToolConfig: ToolConfig = { tools: {} }; // Store loaded tool config
 let currentActiveServersConfig: Record<string, TransportConfig> = {}; // Added for retry logic
-let currentProxyConfig: Config['proxy'] = { retrySseToolCallOnDisconnect: true }; // Added for proxy settings
+
+// Define Global Default Proxy Settings
+const defaultProxySettingsFull: Required<NonNullable<Config['proxy']>> = {
+    retrySseToolCallOnDisconnect: true,
+    retryHttpToolCall: true,
+    httpToolCallMaxRetries: 2,
+    httpToolCallRetryDelayBaseMs: 300,
+};
+
+let currentProxyConfig: Required<NonNullable<Config['proxy']>> = { ...defaultProxySettingsFull }; // Initialize with full defaults
 
 // --- Function to update backend connections and maps ---
 export const updateBackendConnections = async (newServerConfig: Config, newToolConfig: ToolConfig) => {
     console.log("Starting update of backend connections...");
     currentToolConfig = newToolConfig; // Update stored tool config
-    currentProxyConfig = newServerConfig.proxy || { retrySseToolCallOnDisconnect: true }; // Store proxy settings
+    currentProxyConfig = { // Update currentProxyConfig using full defaults
+        ...defaultProxySettingsFull,
+        ...(newServerConfig.proxy || {}),
+    };
 
     const activeServersConfigLocal: Record<string, TransportConfig> = {}; // Renamed to avoid conflict with module-level
     for (const serverKey in newServerConfig.mcpServers) {
@@ -331,15 +343,21 @@ export const createServer = async () => {
         }
     }
   currentActiveServersConfig = initialActiveServers;
-  // Ensure all default proxy settings are applied if some are missing
-  const defaultProxySettings: Required<Config['proxy']> = {
-      retrySseToolCallOnDisconnect: true,
-      retryHttpToolCall: true,
-      httpToolCallMaxRetries: 2,
-      httpToolCallRetryDelayBaseMs: 300,
-  };
+  // Initialize currentActiveServersConfig AND currentProxyConfig from the initial load
+  const initialActiveServers: Record<string, TransportConfig> = {};
+    for (const serverKey in initialServerConfig.mcpServers) {
+        if (Object.prototype.hasOwnProperty.call(initialServerConfig.mcpServers, serverKey)) {
+            const serverConf = initialServerConfig.mcpServers[serverKey];
+            const isActive = !(serverConf.active === false || String(serverConf.active).toLowerCase() === 'false');
+            if (isActive) {
+                initialActiveServers[serverKey] = serverConf;
+            }
+        }
+    }
+  currentActiveServersConfig = initialActiveServers;
+  // Update currentProxyConfig using initialServerConfig and global defaults
   currentProxyConfig = {
-      ...defaultProxySettings,
+      ...defaultProxySettingsFull,
       ...(initialServerConfig.proxy || {}),
   };
 
@@ -436,7 +454,8 @@ export const createServer = async () => {
     } catch (error: any) {
       console.warn(`Initial attempt to call tool '${requestedExposedName}' failed: ${error.message}`);
 
-      const shouldRetrySse = currentProxyConfig?.retrySseToolCallOnDisconnect !== false;
+      // Access currentProxyConfig directly as it's guaranteed to be defined
+      const shouldRetrySse = currentProxyConfig.retrySseToolCallOnDisconnect !== false;
 
       if (clientForTool.transportType === 'sse' && isConnectionError(error) && shouldRetrySse) {
         console.log(`SSE connection error for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting reconnect and retry.`);
@@ -474,11 +493,12 @@ export const createServer = async () => {
       } 
       // HTTP Retry Logic
       else if (clientForTool.transportType === 'http' && 
-               (currentProxyConfig?.retryHttpToolCall !== false) && // Retry enabled by default
+               (currentProxyConfig.retryHttpToolCall !== false) && // Retry enabled by default, access directly
                isConnectionError(error)) {
         
-        const maxRetries = currentProxyConfig.httpToolCallMaxRetries ?? 2;
-        const retryDelayBaseMs = currentProxyConfig.httpToolCallRetryDelayBaseMs ?? 300;
+        // Access properties directly. Defaults are assured by currentProxyConfig's initialization.
+        const maxRetries = currentProxyConfig.httpToolCallMaxRetries;
+        const retryDelayBaseMs = currentProxyConfig.httpToolCallRetryDelayBaseMs;
         let lastError: any = error;
 
         console.log(`HTTP connection error for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting up to ${maxRetries} retries.`);
@@ -510,7 +530,7 @@ export const createServer = async () => {
         let reason = "Unknown reason for no retry.";
         if (clientForTool.transportType === 'sse' && !shouldRetrySse) reason = "SSE retry disabled in config";
         else if (clientForTool.transportType === 'sse' && !isConnectionError(error)) reason = "Error not a connection error for SSE";
-        else if (clientForTool.transportType === 'http' && (currentProxyConfig?.retryHttpToolCall === false)) reason = "HTTP retry disabled in config";
+        else if (clientForTool.transportType === 'http' && (currentProxyConfig.retryHttpToolCall === false)) reason = "HTTP retry disabled in config"; // Access directly
         else if (clientForTool.transportType === 'http' && !isConnectionError(error)) reason = "Error not a connection error for HTTP";
         else if (clientForTool.transportType !== 'sse' && clientForTool.transportType !== 'http') reason = `Unsupported transport type for retry: ${clientForTool.transportType}`;
         
