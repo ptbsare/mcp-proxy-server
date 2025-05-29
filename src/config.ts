@@ -72,6 +72,15 @@ export function isHttpConfig(config: TransportConfig): config is TransportConfig
 
 
 export const loadConfig = async (): Promise<Config> => {
+  // Define standard defaults for specific environment-overrideable proxy settings
+  // This is moved here to be in scope for both try and catch blocks.
+  const defaultEnvProxySettings = {
+      retrySseToolCallOnDisconnect: true,
+      retryHttpToolCall: true,
+      httpToolCallMaxRetries: 2,
+      httpToolCallRetryDelayBaseMs: 300,
+  };
+
   try {
     const configPath = resolve(process.cwd(), 'config', 'mcp_server.json');
     console.log(`Attempting to load configuration from: ${configPath}`);
@@ -81,14 +90,6 @@ export const loadConfig = async (): Promise<Config> => {
     if (typeof parsedConfig !== 'object' || parsedConfig === null || typeof parsedConfig.mcpServers !== 'object') {
         throw new Error('Invalid config format: mcpServers object not found.');
     }
-
-    // Define standard defaults for specific environment-overrideable proxy settings
-    const defaultEnvProxySettings = {
-        retrySseToolCallOnDisconnect: true,
-        retryHttpToolCall: true,
-        httpToolCallMaxRetries: 2,
-        httpToolCallRetryDelayBaseMs: 300,
-    };
 
     // Initialize proxy object on parsedConfig if it doesn't exist
     // This ensures that other proxy settings from the file are preserved if they exist.
