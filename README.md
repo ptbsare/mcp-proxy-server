@@ -175,28 +175,28 @@ Example `config/tool_config.json`:
     ```
 
 ### 4. Proxy Behavior Configuration (Error Handling & Retries)
-These settings are configured within `config/mcp_server.json` under a top-level `proxy` object.
+While some general proxy behaviors might be configured here in the future, the primary retry and error handling settings are now managed via **Environment Variables** for easier deployment-specific overrides. Values in `config/mcp_server.json` for these specific settings will be overridden by environment variables if set.
 
-Example:
+Example `config/mcp_server.json` showing other potential proxy settings:
 ```json
 {
   "mcpServers": {
     "...": "..."
   },
   "proxy": {
-    "retrySseToolCallOnDisconnect": true,
-    "retryHttpToolCall": true,
-    "httpToolCallMaxRetries": 2,
-    "httpToolCallRetryDelayBaseMs": 300
+    "someOtherProxySettingNotOverriddenByEnv": "example_value"
+    // Specific retry settings like retrySseToolCallOnDisconnect, retryHttpToolCall, 
+    // httpToolCallMaxRetries, and httpToolCallRetryDelayBaseMs are now
+    // preferably set via environment variables (see below).
   }
 }
 ```
-See the "Enhanced Reliability Features" section for details on these options.
+See the "Enhanced Reliability Features" and "Environment Variables" sections for details on these options.
 
 
 ## Enhanced Reliability Features
 
-The MCP Proxy Server includes features to improve its resilience and the reliability of interactions with backend MCP services.
+The MCP Proxy Server includes features to improve its resilience and the reliability of interactions with backend MCP services, ensuring smoother operations and more consistent tool execution.
 
 ### 1. Error Propagation
 The proxy server ensures that errors originating from backend MCP services are consistently propagated to the requesting client. These errors are formatted as standard JSON-RPC error responses, making it easier for clients to handle them uniformly.
@@ -209,28 +209,18 @@ When a `tools/call` operation is made to an SSE-based backend server, and the un
 This behavior helps mitigate transient network issues that might temporarily disrupt SSE connections.
 
 **Configuration:**
-This feature is controlled by the `retrySseToolCallOnDisconnect` property within the `proxy` object in your `config/mcp_server.json` file.
--   **`retrySseToolCallOnDisconnect`** (boolean):
-    -   Set to `true` to enable the automatic reconnect and retry.
-    -   Set to `false` to disable this feature.
-    -   **Default:** `true`.
+This feature is primarily controlled by the **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`** environment variable.
+-   **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`** (environment variable):
+    -   Set to `"true"` to enable the automatic reconnect and retry.
+    -   Set to `"false"` to disable this feature.
+    -   **Default Behavior:** `true` (if the environment variable is not set, is empty, or is an invalid value).
+    -   *Note: If this setting is also present in `config/mcp_server.json` under `proxy`, the environment variable takes precedence.*
 
-**Example (`config/mcp_server.json`):**
-```json
-{
-  "mcpServers": {
-    "my-sse-server": {
-      "type": "sse",
-      "url": "http://example.com/sse-endpoint"
-      // ... other server config
-    }
-  },
-  "proxy": {
-    "retrySseToolCallOnDisconnect": true
-    // ... other proxy settings
-  }
-}
+**Example (Environment Variable):**
+```bash
+export RETRY_SSE_TOOL_CALL_ON_DISCONNECT="true"
 ```
+*(The JSON example for `mcp_server.json` under "Proxy Behavior Configuration" illustrates where other proxy settings might go, but this specific setting is best managed via its environment variable.)*
 
 ### 3. HTTP Request Retry for Tool Calls
 For `tools/call` operations directed to HTTP-based backend servers, the proxy implements a retry mechanism for connection errors (e.g., "failed to fetch", network timeouts).
@@ -239,39 +229,32 @@ For `tools/call` operations directed to HTTP-based backend servers, the proxy im
 If an initial HTTP request fails due to a connection error, the proxy will retry the request using an exponential backoff strategy. This means the delay before each subsequent retry attempt increases exponentially, with a small amount of jitter (randomness) added to prevent thundering herd scenarios.
 
 **Configuration:**
-These settings are configured within the `proxy` object in your `config/mcp_server.json` file.
+These settings are primarily controlled by environment variables. Values in `config/mcp_server.json` under the `proxy` object for these specific keys will be overridden by environment variables if set.
 
--   **`retryHttpToolCall`** (boolean):
-    -   Set to `true` to enable retries for HTTP tool calls.
-    -   Set to `false` to disable this feature.
-    -   **Default:** `true`.
+-   **`RETRY_HTTP_TOOL_CALL`** (environment variable):
+    -   Set to `"true"` to enable retries for HTTP tool calls.
+    -   Set to `"false"` to disable this feature.
+    -   **Default Behavior:** `true` (if the environment variable is not set, is empty, or is an invalid value).
 
--   **`httpToolCallMaxRetries`** (number):
-    -   Specifies the maximum number of retry attempts *after* the initial failed attempt. For example, if set to `2`, there will be one initial attempt and up to two retry attempts, totaling a maximum of three attempts.
-    -   **Default:** `2`.
+-   **`HTTP_TOOL_CALL_MAX_RETRIES`** (environment variable):
+    -   Specifies the maximum number of retry attempts *after* the initial failed attempt. For example, if set to `"2"`, there will be one initial attempt and up to two retry attempts, totaling a maximum of three attempts.
+    -   **Default Behavior:** `2` (if the environment variable is not set, is empty, or is not a valid integer).
 
--   **`httpToolCallRetryDelayBaseMs`** (number):
-    -   The base delay in milliseconds used in the exponential backoff calculation. The delay before the *n*-th retry (0-indexed) is roughly `httpToolCallRetryDelayBaseMs * (2^n) + jitter`.
-    -   **Default:** `300` (milliseconds).
+-   **`HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`** (environment variable):
+    -   The base delay in milliseconds used in the exponential backoff calculation. The delay before the *n*-th retry (0-indexed) is roughly `HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS * (2^n) + jitter`.
+    -   **Default Behavior:** `300` (milliseconds) (if the environment variable is not set, is empty, or is not a valid integer).
 
-**Example (`config/mcp_server.json`):**
-```json
-{
-  "mcpServers": {
-    "my-http-server": {
-      "type": "http",
-      "url": "http://example.com/mcp-endpoint"
-      // ... other server config
-    }
-  },
-  "proxy": {
-    "retryHttpToolCall": true,
-    "httpToolCallMaxRetries": 3,
-    "httpToolCallRetryDelayBaseMs": 500
-    // ... other proxy settings
-  }
-}
+**General Notes on Environment Variable Parsing:**
+-   Boolean environment variables (`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`, `RETRY_HTTP_TOOL_CALL`) are considered `true` if their lowercase value is exactly `"true"`. Any other value (including empty or not set) results in the default being applied or `false` if the default is `false` (though for these specific variables, the default is `true`).
+-   Numeric environment variables (`HTTP_TOOL_CALL_MAX_RETRIES`, `HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`) are parsed as base-10 integers. If parsing fails (e.g., the value is not a number, or the variable is empty/not set), the default value is used.
+
+**Example (Environment Variables):**
+```bash
+export RETRY_HTTP_TOOL_CALL="true"
+export HTTP_TOOL_CALL_MAX_RETRIES="3"
+export HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS="500"
 ```
+*(The JSON example for `mcp_server.json` under "Proxy Behavior Configuration" illustrates where other, non-environment-overrideable proxy settings might go.)*
 
 ## Development
 

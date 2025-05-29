@@ -82,51 +82,115 @@ export const loadConfig = async (): Promise<Config> => {
         throw new Error('Invalid config format: mcpServers object not found.');
     }
 
-    // Initialize proxy settings with defaults
-    const defaultProxySettings: Required<ProxySettings> = {
+    // Define standard defaults for specific environment-overrideable proxy settings
+    const defaultEnvProxySettings = {
         retrySseToolCallOnDisconnect: true,
         retryHttpToolCall: true,
         httpToolCallMaxRetries: 2,
         httpToolCallRetryDelayBaseMs: 300,
     };
 
-    const configWithDefaults: Config = {
-      ...parsedConfig,
-      proxy: {
-        ...defaultProxySettings,
-        ...(parsedConfig.proxy || {}), // Spread any existing proxy settings to override defaults
-      }
+    // Initialize proxy object on parsedConfig if it doesn't exist
+    // This ensures that other proxy settings from the file are preserved if they exist.
+    parsedConfig.proxy = parsedConfig.proxy || {};
+
+    // Override with environment variables or defaults for the four specific settings
+    // 1. RETRY_SSE_TOOL_CALL_ON_DISCONNECT
+    const sseRetryEnv = process.env.RETRY_SSE_TOOL_CALL_ON_DISCONNECT;
+    if (sseRetryEnv && sseRetryEnv.trim() !== '') {
+        parsedConfig.proxy.retrySseToolCallOnDisconnect = sseRetryEnv.toLowerCase() === 'true';
+    } else {
+        parsedConfig.proxy.retrySseToolCallOnDisconnect = defaultEnvProxySettings.retrySseToolCallOnDisconnect;
+    }
+
+    // 2. RETRY_HTTP_TOOL_CALL
+    const httpRetryEnv = process.env.RETRY_HTTP_TOOL_CALL;
+    if (httpRetryEnv && httpRetryEnv.trim() !== '') {
+        parsedConfig.proxy.retryHttpToolCall = httpRetryEnv.toLowerCase() === 'true';
+    } else {
+        parsedConfig.proxy.retryHttpToolCall = defaultEnvProxySettings.retryHttpToolCall;
+    }
+
+    // 3. HTTP_TOOL_CALL_MAX_RETRIES
+    const maxRetriesEnv = process.env.HTTP_TOOL_CALL_MAX_RETRIES;
+    if (maxRetriesEnv && maxRetriesEnv.trim() !== '') {
+        const numVal = parseInt(maxRetriesEnv, 10);
+        if (!isNaN(numVal)) {
+            parsedConfig.proxy.httpToolCallMaxRetries = numVal;
+        } else {
+            console.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnv}". Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
+            parsedConfig.proxy.httpToolCallMaxRetries = defaultEnvProxySettings.httpToolCallMaxRetries;
+        }
+    } else {
+        parsedConfig.proxy.httpToolCallMaxRetries = defaultEnvProxySettings.httpToolCallMaxRetries;
+    }
+
+    // 4. HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS
+    const delayBaseEnv = process.env.HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (delayBaseEnv && delayBaseEnv.trim() !== '') {
+        const numVal = parseInt(delayBaseEnv, 10);
+        if (!isNaN(numVal)) {
+            parsedConfig.proxy.httpToolCallRetryDelayBaseMs = numVal;
+        } else {
+            console.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnv}". Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
+            parsedConfig.proxy.httpToolCallRetryDelayBaseMs = defaultEnvProxySettings.httpToolCallRetryDelayBaseMs;
+        }
+    } else {
+        parsedConfig.proxy.httpToolCallRetryDelayBaseMs = defaultEnvProxySettings.httpToolCallRetryDelayBaseMs;
+    }
+    
+    // The parsedConfig now has its proxy settings correctly reflecting env overrides for the specified fields.
+    // Other fields in parsedConfig.proxy loaded from the file remain untouched.
+    // Other parts of parsedConfig (like mcpServers) are also as loaded from the file.
+
+    console.log("Loaded config with final proxy settings (after env overrides):", parsedConfig.proxy);
+    return parsedConfig; // Return the modified parsedConfig
+
+  } catch (error) {
+    console.error(`Error loading config/mcp_server.json:`, error);
+    
+    // If file loading fails, initialize with environment variables or defaults for proxy settings
+    const proxySettingsFromEnvOrDefaults: ProxySettings = {
+        retrySseToolCallOnDisconnect: defaultEnvProxySettings.retrySseToolCallOnDisconnect,
+        retryHttpToolCall: defaultEnvProxySettings.retryHttpToolCall,
+        httpToolCallMaxRetries: defaultEnvProxySettings.httpToolCallMaxRetries,
+        httpToolCallRetryDelayBaseMs: defaultEnvProxySettings.httpToolCallRetryDelayBaseMs,
     };
 
-    // Ensure specific boolean and number types if they exist in parsedConfig.proxy
-    if (parsedConfig.proxy) {
-        if (typeof parsedConfig.proxy.retrySseToolCallOnDisconnect === 'boolean') {
-            configWithDefaults.proxy!.retrySseToolCallOnDisconnect = parsedConfig.proxy.retrySseToolCallOnDisconnect;
-        }
-        if (typeof parsedConfig.proxy.retryHttpToolCall === 'boolean') {
-            configWithDefaults.proxy!.retryHttpToolCall = parsedConfig.proxy.retryHttpToolCall;
-        }
-        if (typeof parsedConfig.proxy.httpToolCallMaxRetries === 'number') {
-            configWithDefaults.proxy!.httpToolCallMaxRetries = parsedConfig.proxy.httpToolCallMaxRetries;
-        }
-        if (typeof parsedConfig.proxy.httpToolCallRetryDelayBaseMs === 'number') {
-            configWithDefaults.proxy!.httpToolCallRetryDelayBaseMs = parsedConfig.proxy.httpToolCallRetryDelayBaseMs;
+    const sseRetryEnvCatch = process.env.RETRY_SSE_TOOL_CALL_ON_DISCONNECT;
+    if (sseRetryEnvCatch && sseRetryEnvCatch.trim() !== '') {
+        proxySettingsFromEnvOrDefaults.retrySseToolCallOnDisconnect = sseRetryEnvCatch.toLowerCase() === 'true';
+    }
+
+    const httpRetryEnvCatch = process.env.RETRY_HTTP_TOOL_CALL;
+    if (httpRetryEnvCatch && httpRetryEnvCatch.trim() !== '') {
+        proxySettingsFromEnvOrDefaults.retryHttpToolCall = httpRetryEnvCatch.toLowerCase() === 'true';
+    }
+    
+    const maxRetriesEnvCatch = process.env.HTTP_TOOL_CALL_MAX_RETRIES;
+    if (maxRetriesEnvCatch && maxRetriesEnvCatch.trim() !== '') {
+        const numVal = parseInt(maxRetriesEnvCatch, 10);
+        if (!isNaN(numVal)) {
+            proxySettingsFromEnvOrDefaults.httpToolCallMaxRetries = numVal;
+        } else {
+            console.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
         }
     }
 
-    console.log("Loaded config with proxy settings:", configWithDefaults.proxy);
-    return configWithDefaults;
-  } catch (error) {
-    console.error(`Error loading config/mcp_server.json:`, error);
-    // Return default structure in case of error
+    const delayBaseEnvCatch = process.env.HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (delayBaseEnvCatch && delayBaseEnvCatch.trim() !== '') {
+        const numVal = parseInt(delayBaseEnvCatch, 10);
+        if (!isNaN(numVal)) {
+            proxySettingsFromEnvOrDefaults.httpToolCallRetryDelayBaseMs = numVal;
+        } else {
+            console.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
+        }
+    }
+    
+    console.log("Using proxy settings from environment/defaults due to mcp_server.json load error:", proxySettingsFromEnvOrDefaults);
     return {
       mcpServers: {},
-      proxy: { // Ensure all defaults are present here too
-        retrySseToolCallOnDisconnect: true,
-        retryHttpToolCall: true,
-        httpToolCallMaxRetries: 2,
-        httpToolCallRetryDelayBaseMs: 300,
-      }
+      proxy: proxySettingsFromEnvOrDefaults,
     };
   }
 };
