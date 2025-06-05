@@ -66,7 +66,7 @@ function renderTools() {
 
     // Render discovered tools first, merging with config
     discoveredTools.forEach(tool => {
-        const toolKey = `${tool.serverName}--${tool.name}`; // Unique key
+        const toolKey = `${tool.serverName}__${tool.name}`; // Unique key
         const config = currentToolConfig.tools[toolKey] || {}; // Get config or empty object
         // For discovered tools, their server is considered active by the proxy at connection time
         renderToolEntry(toolKey, tool, config, false, true); // isConfigOnly = false, isServerActive = true
@@ -76,7 +76,7 @@ function renderTools() {
     // Render any remaining configured tools that were not discovered
     configuredToolKeys.forEach(toolKey => {
          const config = currentToolConfig.tools[toolKey];
-         const serverKeyForConfigOnlyTool = toolKey.split('--')[0];
+         const serverKeyForConfigOnlyTool = toolKey.split('__')[0];
          let isServerActiveForConfigOnlyTool = true; // Default to true if server config not found or active flag is missing/true
 
          if (window.currentServerConfig && window.currentServerConfig.mcpServers && window.currentServerConfig.mcpServers[serverKeyForConfigOnlyTool]) {

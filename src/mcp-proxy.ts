@@ -117,7 +117,7 @@ export const updateBackendConnections = async (newServerConfig: Config, newToolC
             const result = await connectedClient.client.request({ method: 'tools/list', params: {} }, ListToolsResultSchema);
             if (result.tools && result.tools.length > 0) {
                 for (const tool of result.tools) {
-                    const qualifiedName = `${connectedClient.name}--${tool.name}`; // Changed separator to --
+                    const qualifiedName = `${connectedClient.name}__${tool.name}`; // Changed separator to --
                     const toolSettings = currentToolConfig.tools[qualifiedName];
                     const isEnabled = !toolSettings || toolSettings.enabled !== false;
                     if (isEnabled) {
@@ -432,13 +432,15 @@ export const createServer = async () => {
 
     try {
       console.log(`Received tool call for exposed name '${requestedExposedName}' (original qualified name: '${originalQualifiedName}'). Forwarding to server '${clientForTool.name}' as tool '${originalToolNameForBackend}' (Attempt 1)`);
-      return await clientForTool.client.request(
+      const backendResponse = await clientForTool.client.request(
         {
           method: 'tools/call',
           params: { name: originalToolNameForBackend, arguments: args || {}, _meta: { progressToken: request.params._meta?.progressToken } }
         },
         CompatibilityCallToolResultSchema
       );
+      console.log(`[Tool Call] Backend response received for '${requestedExposedName}':'${backendResponse}' . Passing to SDK Server.`);
+      return backendResponse;
     } catch (error: any) {
       console.warn(`Initial attempt to call tool '${requestedExposedName}' failed: ${error.message}`);
 
