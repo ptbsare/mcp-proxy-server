@@ -439,7 +439,7 @@ export const createServer = async () => {
         },
         CompatibilityCallToolResultSchema
       );
-      console.log(`[Tool Call] Backend response received for '${requestedExposedName}':'${backendResponse}' . Passing to SDK Server.`);
+      console.log(`[Tool Call] Backend response received for '${requestedExposedName}':'${JSON.stringify(backendResponse)}' . Passing to SDK Server.`);
       return backendResponse;
     } catch (error: any) {
       console.warn(`Initial attempt to call tool '${requestedExposedName}' failed: ${error.message}`);
