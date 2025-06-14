@@ -9,17 +9,13 @@ init: false
 hassio_api: true
 hassio_role: default
 homeassistant_api: false
-host_network: false
+host_network: true
 map:
   - type: addon_config
     read_only: False
     path: /mcp-proxy-server/config  # App config (mcp_server.json etc.) in /mcp-proxy-server/config inside container, maps to HA's config dir for this addon
   - type: share
     read_only: False  # For TOOLS_FOLDER, maps to /share inside container
-ports:
-  "3663/tcp": 3663
-ports_description:
-  "3663/tcp": "MCP Proxy Server SSE & Admin UI Port"
 options:
   port: 3663
   enable_admin_ui: true # Defaulting to true for Ingress
