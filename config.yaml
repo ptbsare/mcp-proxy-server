@@ -33,7 +33,8 @@ schema:
   admin_username: str
   admin_password: password
   tools_folder: str
-  mcp_proxy_sse_allowed_keys: str?
+  allowed_keys: str?
+  allowed_tokens: str?
 image: "ghcr.io/ptbsare/home-assistant-addons/{arch}-addon-mcp-proxy-server" # Version will be appended by build
 startup: application
 boot: auto

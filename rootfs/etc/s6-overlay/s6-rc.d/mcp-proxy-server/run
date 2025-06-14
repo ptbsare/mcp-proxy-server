@@ -11,8 +11,8 @@ export ENABLE_ADMIN_UI=$(bashio::config 'enable_admin_ui')
 export ADMIN_USERNAME=$(bashio::config 'admin_username')
 export ADMIN_PASSWORD=$(bashio::config 'admin_password')
 export TOOLS_FOLDER=$(bashio::config 'tools_folder')
-export MCP_PROXY_SSE_ALLOWED_KEYS=$(bashio::config 'mcp_proxy_sse_allowed_keys')
-
+export ALLOWED_KEYS=$(bashio::config 'allowed_keys')
+export ALLOWED_TOKENS=$(bashio::config 'allowed_tokens')
 bashio::log.info "Starting MCP Proxy Server..."
 bashio::log.info "Port: ${PORT}"
 bashio::log.info "Admin UI Enabled: ${ENABLE_ADMIN_UI}"
@@ -20,12 +20,16 @@ if [[ "${ENABLE_ADMIN_UI}" == "true" ]]; then
     bashio::log.info "Admin Username: ${ADMIN_USERNAME}"
 fi
 bashio::log.info "Tools Folder: ${TOOLS_FOLDER}" # This is /share/mcp_tools by default
-if [[ -n "${MCP_PROXY_SSE_ALLOWED_KEYS}" ]]; then
+if [[ -n "${ALLOWED_KEYS}" ]]; then
     bashio::log.info "Allowed SSE Keys are configured."
 else
-    bashio::log.info "No SSE Keys configured, SSE endpoint is open or uses internal auth."
+    bashio::log.info "No SSE Keys configured."
 fi
-
+if [[ -n "${ALLOWED_TOKENS}" ]]; then
+    bashio::log.info "Allowed SSE TOKENS are configured."
+else
+    bashio::log.info "No SSE TOKENS configured."
+fi
 # --- Define application paths ---
 # APP_BASE_DIR is the working directory set in Dockerfile, and where app files are copied.
 APP_BASE_DIR="/mcp-proxy-server"
