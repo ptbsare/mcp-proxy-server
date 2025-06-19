@@ -117,7 +117,7 @@ export const updateBackendConnections = async (newServerConfig: Config, newToolC
             const result = await connectedClient.client.request({ method: 'tools/list', params: {} }, ListToolsResultSchema);
             if (result.tools && result.tools.length > 0) {
                 for (const tool of result.tools) {
-                    const qualifiedName = `${connectedClient.name}__${tool.name}`; // Changed separator to --
+                    const qualifiedName = `${connectedClient.name}--${tool.name}`; // Changed separator to --
                     const toolSettings = currentToolConfig.tools[qualifiedName];
                     const isEnabled = !toolSettings || toolSettings.enabled !== false;
                     if (isEnabled) {
