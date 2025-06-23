@@ -39,6 +39,9 @@ const defaultProxySettingsFull: Required<NonNullable<Config['proxy']>> = {
     retryHttpToolCall: true,
     httpToolCallMaxRetries: 2,
     httpToolCallRetryDelayBaseMs: 300,
+    retryStdioToolCall: true, // Default for stdio retry
+    stdioToolCallMaxRetries: 2, // Default for stdio max retries
+    stdioToolCallRetryDelayBaseMs: 300, // Default for stdio retry delay
 };
 
 let currentProxyConfig: Required<NonNullable<Config['proxy']>> = { ...defaultProxySettingsFull }; // Initialize with full defaults
@@ -320,7 +323,11 @@ const isConnectionError = (err: any): boolean => {
            lowerMessage.includes("not connected") ||
            lowerMessage.includes("connection closed") ||
            lowerMessage.includes("transport is closed") || // SDK specific
-           lowerMessage.includes("failed to fetch"); // Network level
+           lowerMessage.includes("failed to fetch") || 
+           lowerMessage.includes("not found") || //404
+           lowerMessage.includes("EOF") || // Network level
+           lowerMessage.includes("TLS") || // TLS handshake
+           lowerMessage.includes("timeout"); 
   }
   return false;
 };
@@ -480,9 +487,45 @@ export const createServer = async () => {
           console.error(errorMessage);
           throw new Error(errorMessage);
         }
-      } 
+      }
+      // STDIO Retry Logic
+      else if (clientForTool.transportType === 'stdio' &&
+               (currentProxyConfig.retryStdioToolCall !== false) && // Retry enabled by default, access directly
+               isConnectionError(error)) {
+
+        // Access properties directly. Defaults are assured by currentProxyConfig's initialization.
+        const maxRetries = currentProxyConfig.stdioToolCallMaxRetries;
+        const retryDelayBaseMs = currentProxyConfig.stdioToolCallRetryDelayBaseMs;
+        let lastError: any = error;
+
+        console.log(`STDIO connection error for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting up to ${maxRetries} retries.`);
+
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          try {
+            const delay = retryDelayBaseMs * Math.pow(2, attempt) + (Math.random() * retryDelayBaseMs * 0.5);
+            console.log(`STDIO tool call failed for '${requestedExposedName}'. Attempt ${attempt + 1}/${maxRetries}. Retrying in ${delay.toFixed(0)}ms...`);
+            await sleep(delay);
+
+            console.log(`Retrying tool call (STDIO) for '${requestedExposedName}' to server '${clientForTool.name}' as tool '${originalToolNameForBackend}' (Attempt ${attempt + 2})`);
+            return await clientForTool.client.request(
+              { method: 'tools/call', params: { name: originalToolNameForBackend, arguments: args || {}, _meta: { progressToken: request.params._meta?.progressToken } } },
+              CompatibilityCallToolResultSchema
+            );
+          } catch (retryError: any) {
+            lastError = retryError;
+            console.error(`STDIO tool call retry attempt ${attempt + 1}/${maxRetries} for '${requestedExposedName}' failed:`, retryError.message);
+            if (attempt === maxRetries - 1) {
+              break;
+            }
+          }
+        }
+        const errorMessage = `Error calling STDIO tool '${requestedExposedName}' after ${maxRetries} retries (on backend server '${clientForTool.name}', original tool name '${originalToolNameForBackend}'): ${lastError.message || 'An unknown error occurred'}`;
+        console.error(errorMessage, lastError);
+        throw new Error(errorMessage);
+
+      }
       // HTTP Retry Logic
-      else if (clientForTool.transportType === 'http' && 
+      else if (clientForTool.transportType === 'http' &&
                (currentProxyConfig.retryHttpToolCall !== false) && // Retry enabled by default, access directly
                isConnectionError(error)) {
         
@@ -518,11 +561,14 @@ export const createServer = async () => {
 
       } else {
         let reason = "Unknown reason for no retry.";
+        const shouldRetryStdio = currentProxyConfig.retryStdioToolCall !== false; // Access directly
         if (clientForTool.transportType === 'sse' && !shouldRetrySse) reason = "SSE retry disabled in config";
         else if (clientForTool.transportType === 'sse' && !isConnectionError(error)) reason = "Error not a connection error for SSE";
+        else if (clientForTool.transportType === 'stdio' && !shouldRetryStdio) reason = "STDIO retry disabled in config"; // Check stdio retry flag
+        else if (clientForTool.transportType === 'stdio' && !isConnectionError(error)) reason = "Error not a connection error for STDIO"; // Check stdio connection error
         else if (clientForTool.transportType === 'http' && (currentProxyConfig.retryHttpToolCall === false)) reason = "HTTP retry disabled in config"; // Access directly
         else if (clientForTool.transportType === 'http' && !isConnectionError(error)) reason = "Error not a connection error for HTTP";
-        else if (clientForTool.transportType !== 'sse' && clientForTool.transportType !== 'http') reason = `Unsupported transport type for retry: ${clientForTool.transportType}`;
+        else if (clientForTool.transportType !== 'sse' && clientForTool.transportType !== 'http' && clientForTool.transportType !== 'stdio') reason = `Unsupported transport type for retry: ${clientForTool.transportType}`; // Add stdio to check
         
         console.warn(`Not retrying tool call for '${requestedExposedName}'. Reason: ${reason}. Original error: ${error.message}`);
         const errorMessage = `Error calling tool '${requestedExposedName}' (on backend server '${clientForTool.name}', original tool name '${originalToolNameForBackend}'): ${error.message || 'An unknown error occurred'}`;

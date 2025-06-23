@@ -39,6 +39,9 @@ export interface ProxySettings {
   retryHttpToolCall?: boolean;
   httpToolCallMaxRetries?: number;
   httpToolCallRetryDelayBaseMs?: number;
+  retryStdioToolCall?: boolean; // Add stdio retry flag
+  stdioToolCallMaxRetries?: number; // Add stdio max retries
+  stdioToolCallRetryDelayBaseMs?: number; // Add stdio retry delay
 }
 
 export interface Config {
@@ -79,6 +82,9 @@ export const loadConfig = async (): Promise<Config> => {
       retryHttpToolCall: true,
       httpToolCallMaxRetries: 2,
       httpToolCallRetryDelayBaseMs: 300,
+      retryStdioToolCall: true, // Default for stdio retry
+      stdioToolCallMaxRetries: 2, // Default for stdio max retries
+      stdioToolCallRetryDelayBaseMs: 300, // Default for stdio retry delay
   };
 
   try {
@@ -95,7 +101,7 @@ export const loadConfig = async (): Promise<Config> => {
     // This ensures that other proxy settings from the file are preserved if they exist.
     parsedConfig.proxy = parsedConfig.proxy || {};
 
-    // Override with environment variables or defaults for the four specific settings
+    // Override with environment variables or defaults for the specific settings
     // 1. RETRY_SSE_TOOL_CALL_ON_DISCONNECT
     const sseRetryEnv = process.env.RETRY_SSE_TOOL_CALL_ON_DISCONNECT;
     if (sseRetryEnv && sseRetryEnv.trim() !== '') {
@@ -139,7 +145,43 @@ export const loadConfig = async (): Promise<Config> => {
     } else {
         parsedConfig.proxy.httpToolCallRetryDelayBaseMs = defaultEnvProxySettings.httpToolCallRetryDelayBaseMs;
     }
-    
+
+    // 5. RETRY_STDIO_TOOL_CALL
+    const stdioRetryEnv = process.env.RETRY_STDIO_TOOL_CALL;
+    if (stdioRetryEnv && stdioRetryEnv.trim() !== '') {
+        parsedConfig.proxy.retryStdioToolCall = stdioRetryEnv.toLowerCase() === 'true';
+    } else {
+        parsedConfig.proxy.retryStdioToolCall = defaultEnvProxySettings.retryStdioToolCall;
+    }
+
+    // 6. STDIO_TOOL_CALL_MAX_RETRIES
+    const stdioMaxRetriesEnv = process.env.STDIO_TOOL_CALL_MAX_RETRIES;
+    if (stdioMaxRetriesEnv && stdioMaxRetriesEnv.trim() !== '') {
+        const numVal = parseInt(stdioMaxRetriesEnv, 10);
+        if (!isNaN(numVal)) {
+            parsedConfig.proxy.stdioToolCallMaxRetries = numVal;
+        } else {
+            console.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
+            parsedConfig.proxy.stdioToolCallMaxRetries = defaultEnvProxySettings.stdioToolCallMaxRetries;
+        }
+    } else {
+        parsedConfig.proxy.stdioToolCallMaxRetries = defaultEnvProxySettings.stdioToolCallMaxRetries;
+    }
+
+    // 7. STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS
+    const stdioDelayBaseEnv = process.env.STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (stdioDelayBaseEnv && stdioDelayBaseEnv.trim() !== '') {
+        const numVal = parseInt(stdioDelayBaseEnv, 10);
+        if (!isNaN(numVal)) {
+            parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = numVal;
+        } else {
+            console.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
+            parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs;
+        }
+    } else {
+        parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs;
+    }
+
     // The parsedConfig now has its proxy settings correctly reflecting env overrides for the specified fields.
     // Other fields in parsedConfig.proxy loaded from the file remain untouched.
     // Other parts of parsedConfig (like mcpServers) are also as loaded from the file.
@@ -156,6 +198,9 @@ export const loadConfig = async (): Promise<Config> => {
         retryHttpToolCall: defaultEnvProxySettings.retryHttpToolCall,
         httpToolCallMaxRetries: defaultEnvProxySettings.httpToolCallMaxRetries,
         httpToolCallRetryDelayBaseMs: defaultEnvProxySettings.httpToolCallRetryDelayBaseMs,
+        retryStdioToolCall: defaultEnvProxySettings.retryStdioToolCall, // Default for stdio retry
+        stdioToolCallMaxRetries: defaultEnvProxySettings.stdioToolCallMaxRetries, // Default for stdio max retries
+        stdioToolCallRetryDelayBaseMs: defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs, // Default for stdio retry delay
     };
 
     const sseRetryEnvCatch = process.env.RETRY_SSE_TOOL_CALL_ON_DISCONNECT;
@@ -187,7 +232,32 @@ export const loadConfig = async (): Promise<Config> => {
             console.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
         }
     }
-    
+
+    const stdioRetryEnvCatch = process.env.RETRY_STDIO_TOOL_CALL;
+    if (stdioRetryEnvCatch && stdioRetryEnvCatch.trim() !== '') {
+        proxySettingsFromEnvOrDefaults.retryStdioToolCall = stdioRetryEnvCatch.toLowerCase() === 'true';
+    }
+
+    const stdioMaxRetriesEnvCatch = process.env.STDIO_TOOL_CALL_MAX_RETRIES;
+    if (stdioMaxRetriesEnvCatch && stdioMaxRetriesEnvCatch.trim() !== '') {
+        const numVal = parseInt(stdioMaxRetriesEnvCatch, 10);
+        if (!isNaN(numVal)) {
+            proxySettingsFromEnvOrDefaults.stdioToolCallMaxRetries = numVal;
+        } else {
+            console.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
+        }
+    }
+
+    const stdioDelayBaseEnvCatch = process.env.STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (stdioDelayBaseEnvCatch && stdioDelayBaseEnvCatch.trim() !== '') {
+        const numVal = parseInt(stdioDelayBaseEnvCatch, 10);
+        if (!isNaN(numVal)) {
+            proxySettingsFromEnvOrDefaults.stdioToolCallRetryDelayBaseMs = numVal;
+        } else {
+            console.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
+        }
+    }
+
     console.log("Using proxy settings from environment/defaults due to mcp_server.json load error:", proxySettingsFromEnvOrDefaults);
     return {
       mcpServers: {},
