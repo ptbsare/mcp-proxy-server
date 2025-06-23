@@ -5,6 +5,7 @@ import { StreamableHTTPClientTransport, StreamableHTTPClientTransportOptions } f
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { TransportConfig, isSSEConfig, isStdioConfig, isHttpConfig } from './config.js';
 import { EventSource } from 'eventsource';
+import { logger } from './logger.js'; // Import logger functions
 
 const sleep = (time: number) => new Promise<void>(resolve => setTimeout(() => resolve(), time))
 export interface ConnectedClient {
@@ -27,10 +28,10 @@ const createClient = (name: string, transportConfig: TransportConfig): { client:
 
       if (transportConfig.bearerToken) {
         customHeaders = { 'Authorization': `Bearer ${transportConfig.bearerToken}` };
-        console.log(`  Using Bearer Token for SSE connection to ${name}`);
+        logger.debug(`  Using Bearer Token for SSE connection to ${name}`); // Changed to debug
       } else if (transportConfig.apiKey) {
         customHeaders = { 'X-Api-Key': transportConfig.apiKey };
-         console.log(`  Using X-Api-Key for SSE connection to ${name}`);
+         logger.debug(`  Using X-Api-Key for SSE connection to ${name}`); // Changed to debug
       }
 
       if (customHeaders) {
@@ -56,77 +57,77 @@ const createClient = (name: string, transportConfig: TransportConfig): { client:
        }
 
        transport = new SSEClientTransport(new URL(transportConfig.url), transportOptions);
-    } else if (isStdioConfig(transportConfig)) {
-      transportType = 'stdio';
-      const mergedEnv = {
-        ...process.env,
-        ...transportConfig.env
-      };
-      const filteredEnv: Record<string, string> = {};
-      for (const key in mergedEnv) {
-        if (Object.prototype.hasOwnProperty.call(mergedEnv, key) && mergedEnv[key] !== undefined) {
-          filteredEnv[key] = mergedEnv[key] as string;
-        }
-      }
-      transport = new StdioClientTransport({
-        command: transportConfig.command,
-        args: transportConfig.args,
-        env: filteredEnv
-      });
-    } else if (isHttpConfig(transportConfig)) {
-      transportType = 'http';
-      const transportOptions: StreamableHTTPClientTransportOptions = {};
-      let customHeaders: Record<string, string> | undefined;
+     } else if (isStdioConfig(transportConfig)) {
+       transportType = 'stdio';
+       const mergedEnv = {
+         ...process.env,
+         ...transportConfig.env
+       };
+       const filteredEnv: Record<string, string> = {};
+       for (const key in mergedEnv) {
+         if (Object.prototype.hasOwnProperty.call(mergedEnv, key) && mergedEnv[key] !== undefined) {
+           filteredEnv[key] = mergedEnv[key] as string;
+         }
+       }
+       transport = new StdioClientTransport({
+         command: transportConfig.command,
+         args: transportConfig.args,
+         env: filteredEnv
+       });
+     } else if (isHttpConfig(transportConfig)) {
+       transportType = 'http';
+       const transportOptions: StreamableHTTPClientTransportOptions = {};
+       let customHeaders: Record<string, string> | undefined;
 
-      if (transportConfig.bearerToken) {
-        customHeaders = { 'Authorization': `Bearer ${transportConfig.bearerToken}` };
-        console.log(`  Using Bearer Token for StreamableHTTP connection to ${name}`);
-      } else if (transportConfig.apiKey) {
-        customHeaders = { 'X-Api-Key': transportConfig.apiKey };
-         console.log(`  Using X-Api-Key for StreamableHTTP connection to ${name}`);
-      }
+       if (transportConfig.bearerToken) {
+         customHeaders = { 'Authorization': `Bearer ${transportConfig.bearerToken}` };
+         logger.debug(`  Using Bearer Token for StreamableHTTP connection to ${name}`); // Changed to debug
+       } else if (transportConfig.apiKey) {
+         customHeaders = { 'X-Api-Key': transportConfig.apiKey };
+          logger.debug(`  Using X-Api-Key for StreamableHTTP connection to ${name}`); // Changed to debug
+       }
 
-      if (customHeaders) {
-        transportOptions.requestInit = { headers: customHeaders };
-      }
-      // Note: StreamableHTTPClientTransport handles session ID internally if configured.
-      // We might pass transportConfig.sessionId if we want to force a specific one.
-      transport = new StreamableHTTPClientTransport(new URL(transportConfig.url), transportOptions);
-    } else {
-      console.error(`Invalid or unknown transport type in configuration for server: ${name}`);
-    }
-  } catch (error) {
-    let transportType = 'unknown';
-    if (isSSEConfig(transportConfig)) transportType = 'sse';
-    else if (isStdioConfig(transportConfig)) transportType = 'stdio';
-    else if (isHttpConfig(transportConfig)) transportType = 'http';
-    console.error(`Failed to create transport ${transportType} to ${name}:`, error);
-  }
+       if (customHeaders) {
+         transportOptions.requestInit = { headers: customHeaders };
+       }
+       // Note: StreamableHTTPClientTransport handles session ID internally if configured.
+       // We might pass transportConfig.sessionId if we want to force a specific one.
+       transport = new StreamableHTTPClientTransport(new URL(transportConfig.url), transportOptions);
+     } else {
+       logger.error(`Invalid or unknown transport type in configuration for server: ${name}`); // Changed to error
+     }
+   } catch (error) {
+     let transportType = 'unknown';
+     if (isSSEConfig(transportConfig)) transportType = 'sse';
+     else if (isStdioConfig(transportConfig)) transportType = 'stdio';
+     else if (isHttpConfig(transportConfig)) transportType = 'http';
+     logger.error(`Failed to create transport ${transportType} to ${name}:`, error); // Changed to error
+   }
 
-  if (!transport || !transportType) { // Also check transportType
-    console.warn(`Transport or transportType for ${name} not available.`);
-    return { transport: undefined, client: undefined, transportType: undefined };
-  }
+   if (!transport || !transportType) { // Also check transportType
+     logger.warn(`Transport or transportType for ${name} not available.`); // Changed to warn
+     return { transport: undefined, client: undefined, transportType: undefined };
+   }
 
-  const client = new Client({
-    name: 'mcp-proxy-client',
-    version: '1.0.0',
-  }, {
-    capabilities: {
-      prompts: {},
-      resources: { subscribe: true },
-      tools: {}
-    }
-  });
+   const client = new Client({
+     name: 'mcp-proxy-client',
+     version: '1.0.0',
+   }, {
+     capabilities: {
+       prompts: {},
+       resources: { subscribe: true },
+       tools: {}
+     }
+   });
 
-  return { client, transport, transportType }
+   return { client, transport, transportType }
 }
 
 export const createClients = async (mcpServers: Record<string, TransportConfig>): Promise<ConnectedClient[]> => {
   const clients: ConnectedClient[] = [];
 
   for (const [name, transportConfig] of Object.entries(mcpServers)) {
-    console.log(`Connecting to server: ${name}`);
+    logger.log(`Connecting to server: ${name}`); // Changed to log
 
     const waitFor = 2500;
     const retries = 3;
@@ -137,13 +138,13 @@ export const createClients = async (mcpServers: Record<string, TransportConfig>)
 
       const { client, transport, transportType } = createClient(name, transportConfig); // Capture transportType
       if (!client || !transport || !transportType) { // Check transportType
-        console.warn(`Skipping client ${name} due to failed client/transport creation.`);
+        logger.warn(`Skipping client ${name} due to failed client/transport creation.`); // Changed to warn
         break;
       }
 
       try {
         await client.connect(transport);
-        console.log(`Connected to server: ${name}`);
+        logger.log(`Connected to server: ${name}`); // Changed to log
 
         clients.push({
           client,
@@ -157,15 +158,15 @@ export const createClients = async (mcpServers: Record<string, TransportConfig>)
 
         break
 
-      } catch (error) {
-        console.error(`Failed to connect to ${name}:`, error);
+      } catch (error: any) {
+        logger.error(`Failed to connect to ${name}: ${error.message}`); // Log error message
         count++;
         retry = (count < retries);
         if (retry) {
           try {
             await client.close();
           } catch { }
-          console.log(`Retry connection to ${name} in ${waitFor}ms (${count}/${retries})`);
+          logger.log(`Retry connection to ${name} in ${waitFor}ms (${count}/${retries})`); // Changed to log
           await sleep(waitFor);
         }
       }
@@ -185,14 +186,14 @@ export async function reconnectSingleClient(
   transportConfig: TransportConfig,
   existingCleanup?: () => Promise<void>
 ): Promise<Omit<ConnectedClient, 'name'>> { // Returns the parts needed to reconstruct a ConnectedClient
-  console.log(`Attempting to reconnect client: ${name}`);
+  logger.log(`Attempting to reconnect client: ${name}`); // Changed to log
 
   if (existingCleanup) {
     try {
       await existingCleanup();
-      console.log(`Existing client ${name} cleaned up before reconnecting.`);
+      logger.log(`Existing client ${name} cleaned up before reconnecting.`); // Changed to log
     } catch (e: any) {
-      console.warn(`Error during cleanup of existing client ${name} before reconnect: ${e.message}`);
+      logger.warn(`Error during cleanup of existing client ${name} before reconnect: ${e.message}`); // Changed to warn
     }
   }
 
@@ -206,10 +207,10 @@ export async function reconnectSingleClient(
       let customHeaders: Record<string, string> | undefined;
       if (transportConfig.bearerToken) {
         customHeaders = { 'Authorization': `Bearer ${transportConfig.bearerToken}` };
-        console.log(`  Using Bearer Token for SSE connection to ${name} (reconnect)`);
+        logger.debug(`  Using Bearer Token for SSE connection to ${name} (reconnect)`); // Changed to debug
       } else if (transportConfig.apiKey) {
         customHeaders = { 'X-Api-Key': transportConfig.apiKey };
-        console.log(`  Using X-Api-Key for SSE connection to ${name} (reconnect)`);
+        logger.debug(`  Using X-Api-Key for SSE connection to ${name} (reconnect)`); // Changed to debug
       }
       if (customHeaders) {
         transportOptions.requestInit = { headers: customHeaders };
@@ -239,17 +240,17 @@ export async function reconnectSingleClient(
         args: transportConfig.args,
         env: filteredEnv
       });
-      console.log(`  Configured Stdio transport for ${name} (reconnect)`);
+      logger.debug(`  Configured Stdio transport for ${name} (reconnect)`); // Changed to debug
     } else if (isHttpConfig(transportConfig)) {
       determinedTransportType = 'http';
       const transportOptions: StreamableHTTPClientTransportOptions = {};
       let customHeaders: Record<string, string> | undefined;
       if (transportConfig.bearerToken) {
         customHeaders = { 'Authorization': `Bearer ${transportConfig.bearerToken}` };
-        console.log(`  Using Bearer Token for StreamableHTTP connection to ${name} (reconnect)`);
+        logger.debug(`  Using Bearer Token for StreamableHTTP connection to ${name} (reconnect)`); // Changed to debug
       } else if (transportConfig.apiKey) {
         customHeaders = { 'X-Api-Key': transportConfig.apiKey };
-        console.log(`  Using X-Api-Key for StreamableHTTP connection to ${name} (reconnect)`);
+        logger.debug(`  Using X-Api-Key for StreamableHTTP connection to ${name} (reconnect)`); // Changed to debug
       }
       if (customHeaders) {
         transportOptions.requestInit = { headers: customHeaders };
@@ -259,7 +260,7 @@ export async function reconnectSingleClient(
       throw new Error(`Invalid or unknown transport type in configuration for server: ${name}`);
     }
   } catch (error: any) {
-    console.error(`Failed to create transport for ${name} during reconnect: ${error.message}`);
+    logger.error(`Failed to create transport for ${name} during reconnect: ${error.message}`); // Changed to error
     throw error;
   }
 
@@ -276,7 +277,7 @@ export async function reconnectSingleClient(
 
   try {
     await newSdkClient.connect(transport);
-    console.log(`Successfully reconnected to server: ${name}`);
+    logger.log(`Successfully reconnected to server: ${name}`); // Changed to log
     const finalTransport = transport; // Capture for closure
     return {
       client: newSdkClient,
@@ -289,13 +290,13 @@ export async function reconnectSingleClient(
       }
     };
   } catch (error: any) {
-    console.error(`Failed to connect to ${name} during reconnect attempt: ${error.message}`);
+    logger.error(`Failed to connect to ${name} during reconnect attempt: ${error.message}`); // Changed to error
     try {
       if (transport) {
           await transport.close();
       }
     } catch (closeError: any) {
-      console.warn(`Failed to close transport for ${name} after reconnect failure: ${closeError.message}`);
+      logger.warn(`Failed to close transport for ${name} after reconnect failure: ${closeError.message}`); // Changed to warn
     }
     throw error;
   }

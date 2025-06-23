@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
+import { logger } from './logger.js';
 
 export type TransportConfigStdio = {
   type: 'stdio';
@@ -125,7 +126,7 @@ export const loadConfig = async (): Promise<Config> => {
         if (!isNaN(numVal)) {
             parsedConfig.proxy.httpToolCallMaxRetries = numVal;
         } else {
-            console.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnv}". Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
+            logger.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnv}". Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
             parsedConfig.proxy.httpToolCallMaxRetries = defaultEnvProxySettings.httpToolCallMaxRetries;
         }
     } else {
@@ -139,7 +140,7 @@ export const loadConfig = async (): Promise<Config> => {
         if (!isNaN(numVal)) {
             parsedConfig.proxy.httpToolCallRetryDelayBaseMs = numVal;
         } else {
-            console.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnv}". Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
+            logger.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnv}". Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
             parsedConfig.proxy.httpToolCallRetryDelayBaseMs = defaultEnvProxySettings.httpToolCallRetryDelayBaseMs;
         }
     } else {
@@ -161,7 +162,7 @@ export const loadConfig = async (): Promise<Config> => {
         if (!isNaN(numVal)) {
             parsedConfig.proxy.stdioToolCallMaxRetries = numVal;
         } else {
-            console.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
+            logger.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
             parsedConfig.proxy.stdioToolCallMaxRetries = defaultEnvProxySettings.stdioToolCallMaxRetries;
         }
     } else {
@@ -175,7 +176,7 @@ export const loadConfig = async (): Promise<Config> => {
         if (!isNaN(numVal)) {
             parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = numVal;
         } else {
-            console.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
+            logger.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
             parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs;
         }
     } else {
@@ -185,14 +186,14 @@ export const loadConfig = async (): Promise<Config> => {
     // The parsedConfig now has its proxy settings correctly reflecting env overrides for the specified fields.
     // Other fields in parsedConfig.proxy loaded from the file remain untouched.
     // Other parts of parsedConfig (like mcpServers) are also as loaded from the file.
-
-    console.log("Loaded config with final proxy settings (after env overrides):", parsedConfig.proxy);
-    return parsedConfig; // Return the modified parsedConfig
-
-  } catch (error) {
-    console.error(`Error loading config/mcp_server.json:`, error);
-    
-    // If file loading fails, initialize with environment variables or defaults for proxy settings
+ 
+     logger.log("Loaded config with final proxy settings (after env overrides):", JSON.stringify(parsedConfig.proxy).slice(1, -1));
+     return parsedConfig; // Return the modified parsedConfig
+ 
+   } catch (error: any) {
+     logger.error(`Error loading config/mcp_server.json: ${error.message}`);
+     
+     // If file loading fails, initialize with environment variables or defaults for proxy settings
     const proxySettingsFromEnvOrDefaults: ProxySettings = {
         retrySseToolCallOnDisconnect: defaultEnvProxySettings.retrySseToolCallOnDisconnect,
         retryHttpToolCall: defaultEnvProxySettings.retryHttpToolCall,
@@ -219,7 +220,7 @@ export const loadConfig = async (): Promise<Config> => {
         if (!isNaN(numVal)) {
             proxySettingsFromEnvOrDefaults.httpToolCallMaxRetries = numVal;
         } else {
-            console.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
+            logger.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
         }
     }
 
@@ -229,7 +230,7 @@ export const loadConfig = async (): Promise<Config> => {
         if (!isNaN(numVal)) {
             proxySettingsFromEnvOrDefaults.httpToolCallRetryDelayBaseMs = numVal;
         } else {
-            console.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
+            logger.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
         }
     }
 
@@ -244,7 +245,7 @@ export const loadConfig = async (): Promise<Config> => {
         if (!isNaN(numVal)) {
             proxySettingsFromEnvOrDefaults.stdioToolCallMaxRetries = numVal;
         } else {
-            console.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
+            logger.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
         }
     }
 
@@ -254,11 +255,11 @@ export const loadConfig = async (): Promise<Config> => {
         if (!isNaN(numVal)) {
             proxySettingsFromEnvOrDefaults.stdioToolCallRetryDelayBaseMs = numVal;
         } else {
-            console.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
+            logger.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
         }
     }
 
-    console.log("Using proxy settings from environment/defaults due to mcp_server.json load error:", proxySettingsFromEnvOrDefaults);
+    logger.log("Using proxy settings from environment/defaults due to mcp_server.json load error:", proxySettingsFromEnvOrDefaults);
     return {
       mcpServers: {},
       proxy: proxySettingsFromEnvOrDefaults,
@@ -269,31 +270,31 @@ export const loadConfig = async (): Promise<Config> => {
 
 export const loadToolConfig = async (): Promise<ToolConfig> => {
   const defaultConfig: ToolConfig = { tools: {} };
-  try {
-    const configPath = resolve(process.cwd(), 'config', 'tool_config.json');
-    console.log(`Attempting to load tool configuration from: ${configPath}`);
-    const fileContents = await readFile(configPath, 'utf-8');
-    const parsedConfig = JSON.parse(fileContents) as ToolConfig;
+try {
+  const configPath = resolve(process.cwd(), 'config', 'tool_config.json');
+  logger.log(`Attempting to load tool configuration from: ${configPath}`);
+  const fileContents = await readFile(configPath, 'utf-8');
+  const parsedConfig = JSON.parse(fileContents) as ToolConfig;
 
-    if (typeof parsedConfig !== 'object' || parsedConfig === null || typeof parsedConfig.tools !== 'object') {
-        console.warn('Invalid tool_config.json format: "tools" object not found or invalid. Using default.');
-        return defaultConfig;
-    }
-    for (const toolKey in parsedConfig.tools) {
-        if (typeof parsedConfig.tools[toolKey]?.enabled !== 'boolean') {
-             console.warn(`Invalid setting for tool "${toolKey}" in tool_config.json: 'enabled' is missing or not a boolean. Assuming enabled.`);
-        }
-    }
-
-    console.log(`Successfully loaded tool configuration for ${Object.keys(parsedConfig.tools).length} tools.`);
-    return parsedConfig;
-  } catch (error: any) {
-     if (error.code === 'ENOENT') {
-        console.log('config/tool_config.json not found. Using default (all tools enabled).');
-     } else {
-        console.error(`Error loading config/tool_config.json:`, error);
-        console.warn('Using default tool configuration (all tools enabled) due to error.');
-     }
-    return defaultConfig;
+  if (typeof parsedConfig !== 'object' || parsedConfig === null || typeof parsedConfig.tools !== 'object') {
+      logger.warn('Invalid tool_config.json format: "tools" object not found or invalid. Using default.');
+      return defaultConfig;
   }
+  for (const toolKey in parsedConfig.tools) {
+      if (typeof parsedConfig.tools[toolKey]?.enabled !== 'boolean') {
+           logger.warn(`Invalid setting for tool "${toolKey}" in tool_config.json: 'enabled' is missing or not a boolean. Assuming enabled.`);
+      }
+  }
+
+  logger.log(`Successfully loaded tool configuration for ${Object.keys(parsedConfig.tools).length} tools.`);
+  return parsedConfig;
+} catch (error: any) {
+   if (error.code === 'ENOENT') {
+      logger.log('config/tool_config.json not found. Using default (all tools enabled).');
+   } else {
+      logger.error(`Error loading config/tool_config.json: ${error.message}`);
+      logger.warn('Using default tool configuration (all tools enabled) due to error.');
+   }
+  return defaultConfig;
+}
 };

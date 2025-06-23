@@ -16,6 +16,7 @@ import { fileURLToPath } from 'url';
 import { Tool, ListToolsResultSchema, JSONRPCMessage, JSONRPCError } from "@modelcontextprotocol/sdk/types.js";
 // Import loadToolConfig as well
 import { Config, loadConfig, isStdioConfig, loadToolConfig } from './config.js';
+import { logger } from './logger.js';
 // Import terminal router and related types/variables for shutdown
 import { terminalRouter, activeTerminals, TERMINAL_OUTPUT_SSE_CONNECTIONS, ActiveTerminal } from './terminal.js';
 
@@ -54,14 +55,14 @@ const allowedTokensRaw = process.env.ALLOWED_TOKENS || ""; // Renamed
 const allowedTokens = new Set(allowedTokensRaw.split(',').map(t => t.trim()).filter(t => t.length > 0));
 
 const authEnabled = allowedKeys.size > 0 || allowedTokens.size > 0;
-console.log(`MCP Endpoint Authentication: ${authEnabled ? `Enabled. ${allowedKeys.size} key(s) and ${allowedTokens.size} token(s) configured.` : 'Disabled.'}`);
+logger.log(`MCP Endpoint Authentication: ${authEnabled ? `Enabled. ${allowedKeys.size} key(s) and ${allowedTokens.size} token(s) configured.` : 'Disabled.'}`);
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
 const SESSION_SECRET_ENV = process.env.SESSION_SECRET; // Read from env
 
 if (ADMIN_PASSWORD === 'password') {
-    console.warn("WARNING: Using default admin password. Set ADMIN_PASSWORD environment variable for security.");
+    logger.warn("WARNING: Using default admin password. Set ADMIN_PASSWORD environment variable for security.");
 }
 // SESSION_SECRET warning is handled in getSessionSecret
 
@@ -73,7 +74,7 @@ const enableAdminUI = typeof rawEnableAdminUI === 'string' && (rawEnableAdminUI.
 
 async function getSessionSecret(): Promise<string> {
     if (SESSION_SECRET_ENV && SESSION_SECRET_ENV !== 'unsafe-default-secret' && SESSION_SECRET_ENV.trim() !== '') {
-        console.log("Using session secret from SESSION_SECRET environment variable.");
+        logger.log("Using session secret from SESSION_SECRET environment variable.");
         return SESSION_SECRET_ENV;
     }
 
@@ -81,18 +82,18 @@ async function getSessionSecret(): Promise<string> {
         await access(SECRET_FILE_PATH);
         const secretFromFile = await readFile(SECRET_FILE_PATH, 'utf-8');
         if (secretFromFile.trim() !== '') {
-            console.log("Read existing session secret from file.");
+            logger.log("Read existing session secret from file.");
             return secretFromFile.trim();
         }
         // If file exists but is empty, proceed to generate a new one.
-        console.log("Session secret file exists but is empty. Generating a new one...");
+        logger.log("Session secret file exists but is empty. Generating a new one...");
     } catch (error: any) {
         if (error.code !== 'ENOENT') {
-            console.error("Error accessing session secret file, attempting to generate new:", error);
+            logger.error("Error accessing session secret file, attempting to generate new:", error);
             // Proceed to generate new one if access failed for other reasons than not found
         } else {
             // File does not exist, normal path to generate new.
-            console.log("Session secret file not found. Generating a new one...");
+            logger.log("Session secret file not found. Generating a new one...");
         }
     }
 
@@ -101,11 +102,11 @@ async function getSessionSecret(): Promise<string> {
     try {
         await mkdir(path.dirname(SECRET_FILE_PATH), { recursive: true });
         await writeFile(SECRET_FILE_PATH, newSecret, { encoding: 'utf-8', mode: 0o600 });
-        console.log(`New session secret generated and saved to ${SECRET_FILE_PATH}. It's recommended to set this value in the SESSION_SECRET environment variable for persistence across container restarts or deployments.`);
+        logger.log(`New session secret generated and saved to ${SECRET_FILE_PATH}. It's recommended to set this value in the SESSION_SECRET environment variable for persistence across container restarts or deployments.`);
         return newSecret;
     } catch (writeError) {
-        console.error("FATAL: Could not write new session secret file:", writeError);
-        console.warn("WARNING: Falling back to a temporary, insecure session secret. Admin UI sessions will not persist.");
+        logger.error("FATAL: Could not write new session secret file:", writeError);
+        logger.warn("WARNING: Falling back to a temporary, insecure session secret. Admin UI sessions will not persist.");
         return 'temporary-insecure-secret-' + crypto.randomBytes(16).toString('hex'); // Fallback, but not ideal
     }
 }
@@ -115,11 +116,11 @@ async function getSessionSecret(): Promise<string> {
 const adminSseConnections = new Map<string, ServerResponse>();
 
 if (enableAdminUI) {
-    console.log("Admin UI is ENABLED.");
+    logger.log("Admin UI is ENABLED.");
     // Use global ADMIN_USERNAME and ADMIN_PASSWORD defined earlier.
 
     if (ADMIN_PASSWORD === 'password') { // Use global ADMIN_PASSWORD
-        console.warn("WARNING: Using default admin password. Set ADMIN_USERNAME and ADMIN_PASSWORD environment variables for security.");
+        logger.warn("WARNING: Using default admin password. Set ADMIN_USERNAME and ADMIN_PASSWORD environment variables for security.");
     }
 
     const sessionSecret = await getSessionSecret();
@@ -148,10 +149,10 @@ if (enableAdminUI) {
         const { username, password } = req.body;
         if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
             req.session.user = { username: username };
-            console.log(`Admin user '${username}' logged in.`);
+            logger.log(`Admin user '${username}' logged in.`);
             res.json({ success: true });
         } else {
-            console.warn(`Failed admin login attempt for username: '${username}'`);
+            logger.warn(`Failed admin login attempt for username: '${username}'`);
             res.status(401).json({ success: false, error: 'Invalid credentials' });
         }
     });
@@ -160,10 +161,10 @@ if (enableAdminUI) {
         const username = req.session.user?.username;
         req.session.destroy((err) => {
             if (err) {
-                console.error("Error destroying session:", err);
+                logger.error("Error destroying session:", err);
                 return res.status(500).json({ success: false, error: 'Failed to logout' });
             }
-            console.log(`Admin user '${username}' logged out.`);
+            logger.log(`Admin user '${username}' logged out.`);
             res.clearCookie('connect.sid');
             res.json({ success: true });
         });
@@ -171,12 +172,12 @@ if (enableAdminUI) {
 
     app.get('/admin/config', isAuthenticated, async (req, res) => {
         try {
-            console.log("Admin request: GET /admin/config");
+            logger.log("Admin request: GET /admin/config");
             const configData = await readFile(CONFIG_PATH, 'utf-8');
             res.setHeader('Content-Type', 'application/json');
             res.send(configData);
         } catch (error: any) {
-            console.error(`Error reading config file at ${CONFIG_PATH}:`, error);
+            logger.error(`Error reading config file at ${CONFIG_PATH}:`, error);
             if (error.code === 'ENOENT') {
                  res.status(404).json({ error: 'Configuration file not found.' });
             } else {
@@ -187,7 +188,7 @@ if (enableAdminUI) {
 
     app.post('/admin/config', isAuthenticated, async (req, res) => {
         try {
-            console.log("Admin request: POST /admin/config");
+            logger.log("Admin request: POST /admin/config");
             const newConfigData = req.body;
 
             if (typeof newConfigData !== 'object' || newConfigData === null) {
@@ -196,10 +197,10 @@ if (enableAdminUI) {
 
             const configString = JSON.stringify(newConfigData, null, 2);
             await writeFile(CONFIG_PATH, configString, 'utf-8');
-            console.log(`Configuration file updated successfully by admin '${req.session.user?.username}'.`);
+            logger.log(`Configuration file updated successfully by admin '${req.session.user?.username}'.`);
             res.json({ success: true });
         } catch (error) {
-            console.error(`Error writing config file at ${CONFIG_PATH}:`, error);
+            logger.error(`Error writing config file at ${CONFIG_PATH}:`, error);
             res.status(500).json({ error: 'Failed to write configuration file.' });
         }
     });
@@ -207,31 +208,31 @@ if (enableAdminUI) {
 
     // Updated to use getCurrentProxyState
     app.get('/admin/tools/list', isAuthenticated, async (req, res) => {
-        console.log("Admin request: GET /admin/tools/list");
+        logger.log("Admin request: GET /admin/tools/list");
         try {
             // Get the current tool state from the proxy module
             const { tools } = getCurrentProxyState();
             // The tools returned are already simplified for the UI
-            console.log(`Admin tools/list: Returning ${tools.length} discovered tools from proxy state.`);
+            logger.log(`Admin tools/list: Returning ${tools.length} discovered tools from proxy state.`);
             res.json({ tools }); // Return the simplified list directly
         } catch (error: any) {
-            console.error(`Admin tools/list: Error getting proxy state:`, error?.message || error);
+            logger.error(`Admin tools/list: Error getting proxy state:`, error?.message || error);
             res.status(500).json({ error: 'Failed to retrieve tool list from proxy state.' });
         }
     });
 
     app.get('/admin/tools/config', isAuthenticated, async (req, res) => {
         try {
-            console.log("Admin request: GET /admin/tools/config");
+            logger.log("Admin request: GET /admin/tools/config");
             const toolConfigData = await readFile(TOOL_CONFIG_PATH, 'utf-8');
             res.setHeader('Content-Type', 'application/json');
             res.send(toolConfigData);
         } catch (error: any) {
             if (error.code === 'ENOENT') {
-                 console.log(`Tool config file ${TOOL_CONFIG_PATH} not found, returning empty config.`);
+                 logger.log(`Tool config file ${TOOL_CONFIG_PATH} not found, returning empty config.`);
                  res.json({ tools: {} });
             } else {
-                 console.error(`Error reading tool config file at ${TOOL_CONFIG_PATH}:`, error);
+                 logger.error(`Error reading tool config file at ${TOOL_CONFIG_PATH}:`, error);
                  res.status(500).json({ error: 'Failed to read tool configuration file.' });
             }
         }
@@ -239,7 +240,7 @@ if (enableAdminUI) {
 
     app.post('/admin/tools/config', isAuthenticated, async (req, res) => {
         try {
-            console.log("Admin request: POST /admin/tools/config");
+            logger.log("Admin request: POST /admin/tools/config");
             const newToolConfigData = req.body;
 
             if (typeof newToolConfigData !== 'object' || newToolConfigData === null || typeof newToolConfigData.tools !== 'object') {
@@ -248,16 +249,16 @@ if (enableAdminUI) {
 
             const configString = JSON.stringify(newToolConfigData, null, 2);
             await writeFile(TOOL_CONFIG_PATH, configString, 'utf-8');
-            console.log(`Tool configuration file updated successfully by admin '${req.session.user?.username}'.`);
+            logger.log(`Tool configuration file updated successfully by admin '${req.session.user?.username}'.`);
             res.json({ success: true, message: "Configuration saved. Restart proxy server to apply changes." });
         } catch (error) {
-            console.error(`Error writing tool config file at ${TOOL_CONFIG_PATH}:`, error);
+            logger.error(`Error writing tool config file at ${TOOL_CONFIG_PATH}:`, error);
             res.status(500).json({ error: 'Failed to write tool configuration file.' });
         }
     });
     // Renamed endpoint and updated logic for in-process reload
     app.post('/admin/server/reload', isAuthenticated, async (req, res) => {
-        console.log(`Admin request: POST /admin/server/reload by user '${req.session.user?.username}'`);
+        logger.log(`Admin request: POST /admin/server/reload by user '${req.session.user?.username}'`);
         try {
             // Load the latest configurations
             const latestServerConfig = await loadConfig();
@@ -266,11 +267,11 @@ if (enableAdminUI) {
             // Trigger the update process in mcp-proxy
             await updateBackendConnections(latestServerConfig, latestToolConfig);
 
-            console.log("Configuration reload completed successfully.");
+            logger.log("Configuration reload completed successfully.");
             res.json({ success: true, message: 'Server configuration reloaded successfully.' });
 
         } catch (error: any) {
-            console.error("Error during configuration reload:", error);
+            logger.error("Error during configuration reload:", error);
             res.status(500).json({ success: false, error: 'Failed to reload server configuration.', details: error.message });
         }
     });
@@ -289,8 +290,8 @@ if (enableAdminUI) {
         const adminSessionId = req.session.id; // Get current admin's session ID
         const clientId = req.ip || `admin-${Date.now()}`; // For logging
 
-        console.log(`[${clientId}] Admin request: POST /admin/server/install/${serverKey} for session ${adminSessionId}`);
-        console.warn(`[${clientId}] SECURITY WARNING: Attempting to execute installation commands for server '${serverKey}'.`);
+        logger.log(`[${clientId}] Admin request: POST /admin/server/install/${serverKey} for session ${adminSessionId}`);
+        logger.warn(`[${clientId}] SECURITY WARNING: Attempting to execute installation commands for server '${serverKey}'.`);
 
         // Immediately respond to the HTTP request
         res.json({ success: true, message: `Installation process for '${serverKey}' started. Check for live updates.` });
@@ -306,10 +307,10 @@ if (enableAdminUI) {
                         // Ensure data is stringified to handle objects and special characters
                         adminRes.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
                     } catch (e) {
-                        console.error(`[${clientId}] Failed to send admin SSE event ${event} for session ${adminSessionId}:`, e);
+                        logger.error(`[${clientId}] Failed to send admin SSE event ${event} for session ${adminSessionId}:`, e);
                     }
                 } else if (adminSessionId) { // Log warning only if we expected a connection
-                     console.warn(`[${clientId}] No active admin SSE connection found for session ${adminSessionId} to send event ${event}.`);
+                     logger.warn(`[${clientId}] No active admin SSE connection found for session ${adminSessionId} to send event ${event}.`);
                 }
             };
 
@@ -318,10 +319,12 @@ if (enableAdminUI) {
                 const serverConfig = config.mcpServers[serverKey];
 
                 if (!serverConfig) {
+                    logger.error(`Server configuration not found for key: ${serverKey}`);
                     sendAdminSseEvent('install_error', { serverKey, error: `Server configuration not found for key: ${serverKey}` });
                     return;
                 }
                 if (!isStdioConfig(serverConfig)) {
+                    logger.error(`Installation commands only supported for stdio servers.`);
                     sendAdminSseEvent('install_error', { serverKey, error: `Installation commands only supported for stdio servers.` });
                     return;
                 }
@@ -331,19 +334,22 @@ if (enableAdminUI) {
 
                 if (installDirectory) { // 1. From mcp_server.json
                     absoluteInstallDir = path.resolve(installDirectory); // path.resolve handles both absolute and relative (to cwd)
+                    logger.log(`Using 'installDirectory' from config: ${absoluteInstallDir}`);
                     sendAdminSseEvent('install_info', { serverKey, message: `Using 'installDirectory' from config: ${absoluteInstallDir}` });
                 } else if (process.env.TOOLS_FOLDER && process.env.TOOLS_FOLDER.trim() !== '') { // 2. From TOOLS_FOLDER env var
                     absoluteInstallDir = path.resolve(process.env.TOOLS_FOLDER.trim(), serverKey);
+                    logger.log(`Using 'TOOLS_FOLDER' env var ('${process.env.TOOLS_FOLDER.trim()}'). Target server directory: ${absoluteInstallDir}`);
                     sendAdminSseEvent('install_info', { serverKey, message: `Using 'TOOLS_FOLDER' env var ('${process.env.TOOLS_FOLDER.trim()}'). Target server directory: ${absoluteInstallDir}` });
                 } else { // 3. Default to a 'tools' subfolder in the project's current working directory
                     absoluteInstallDir = path.resolve(process.cwd(), 'tools', serverKey);
+                    logger.log(`No 'installDirectory' in config or 'TOOLS_FOLDER' env var. Defaulting to project's 'tools' subfolder. Target server directory: ${absoluteInstallDir}`);
                     sendAdminSseEvent('install_info', { serverKey, message: `No 'installDirectory' in config or 'TOOLS_FOLDER' env var. Defaulting to project's 'tools' subfolder. Target server directory: ${absoluteInstallDir}` });
                 }
                 
                 // Commands should be executed in the parent directory of the server's specific folder
                 const executionCwd = path.dirname(absoluteInstallDir); 
-                console.log(`[${clientId}] Target server installation directory for ${serverKey}: ${absoluteInstallDir}`);
-                console.log(`[${clientId}] Execution CWD for install commands of ${serverKey}: ${executionCwd}`);
+                logger.log(`[${clientId}] Target server installation directory for ${serverKey}: ${absoluteInstallDir}`);
+                logger.log(`[${clientId}] Execution CWD for install commands of ${serverKey}: ${executionCwd}`);
                 sendAdminSseEvent('install_info', { serverKey, message: `Install commands will be executed in: ${executionCwd}` });
 
                 // Ensure executionCwd (parent directory for installation) exists
@@ -351,6 +357,7 @@ if (enableAdminUI) {
                     await mkdir(executionCwd, { recursive: true });
                     sendAdminSseEvent('install_info', { serverKey, message: `Ensured execution directory exists: ${executionCwd}` });
                 } catch (mkdirError: any) {
+                    logger.error(`Failed to create execution directory '${executionCwd}': ${mkdirError.message}`);
                     sendAdminSseEvent('install_error', { serverKey, error: `Failed to create execution directory '${executionCwd}': ${mkdirError.message}` });
                     throw mkdirError;
                 }
@@ -358,22 +365,27 @@ if (enableAdminUI) {
                 // 1. Check if the specific server directory (absoluteInstallDir) already exists
                 try {
                     await access(absoluteInstallDir);
+                    logger.log(`Target server directory '${absoluteInstallDir}' already exists. Installation skipped.`);
                     sendAdminSseEvent('install_info', { serverKey, message: `Target server directory '${absoluteInstallDir}' already exists. Installation skipped.` });
                     sendAdminSseEvent('install_complete', { serverKey, code: 0, message: "Already installed." });
                     return; // Stop if already installed
                 } catch (error: any) {
                     if (error.code !== 'ENOENT') {
+                         logger.error(`Error checking target server directory '${absoluteInstallDir}': ${error.message}`);
                          sendAdminSseEvent('install_error', { serverKey, error: `Error checking target server directory '${absoluteInstallDir}': ${error.message}` });
                          throw error; // Rethrow unexpected errors
                     }
+                    logger.log(`Target server directory '${absoluteInstallDir}' does not exist. Proceeding with installation commands...`);
                     sendAdminSseEvent('install_info', { serverKey, message: `Target server directory '${absoluteInstallDir}' does not exist. Proceeding with installation commands...` });
                 }
 
                 // 2. Execute install commands using spawn for live output
                 const commandsToRun = installCommands && Array.isArray(installCommands) ? installCommands : [];
                 if (commandsToRun.length > 0) {
+                    logger.log(`Executing ${commandsToRun.length} installation command(s) in ${executionCwd}...`);
                     sendAdminSseEvent('install_info', { serverKey, message: `Executing ${commandsToRun.length} installation command(s) in ${executionCwd}...` });
                     for (const command of commandsToRun) {
+                        logger.log(`Executing: ${command}`);
                         sendAdminSseEvent('install_info', { serverKey, message: `Executing: ${command}` });
 
                         const commandParts = command.split(' ');
@@ -389,14 +401,14 @@ if (enableAdminUI) {
                         // Stream stdout
                         child.stdout.on('data', (data) => {
                             const output = data.toString();
-                            console.log(`[${clientId}] Install stdout (${serverKey}): ${output.trim()}`);
+                            logger.log(`[${clientId}] Install stdout (${serverKey}): ${output.trim()}`);
                             sendAdminSseEvent('install_stdout', { serverKey, output });
                         });
 
                         // Stream stderr
                         child.stderr.on('data', (data) => {
                             const output = data.toString();
-                            console.error(`[${clientId}] Install stderr (${serverKey}): ${output.trim()}`);
+                            logger.error(`[${clientId}] Install stderr (${serverKey}): ${output.trim()}`);
                             sendAdminSseEvent('install_stderr', { serverKey, output });
                         });
 
@@ -404,7 +416,7 @@ if (enableAdminUI) {
                         const exitCode = await new Promise<number | null>((resolve, reject) => {
                             child.on('close', resolve); 
                             child.on('error', (err) => { 
-                                 console.error(`[${clientId}] Failed to start command "${command}":`, err);
+                                 logger.error(`[${clientId}] Failed to start command "${command}":`, err);
                                  reject(err);
                             });
                         });
@@ -414,10 +426,13 @@ if (enableAdminUI) {
                             sendAdminSseEvent('install_error', { serverKey, error: errorMsg, command, exitCode });
                             throw new Error(errorMsg); 
                         }
+                        logger.log(`Command "${command}" completed successfully.`);
                         sendAdminSseEvent('install_info', { serverKey, message: `Command "${command}" completed successfully.` });
                     }
+                    logger.log(`All installation commands executed successfully.`);
                     sendAdminSseEvent('install_info', { serverKey, message: `All installation commands executed successfully.` });
                 } else {
+                    logger.log(`No installation commands provided.`);
                     sendAdminSseEvent('install_info', { serverKey, message: `No installation commands provided.` });
                 }
 
@@ -425,13 +440,17 @@ if (enableAdminUI) {
                 // This is important if installCommands were supposed to create it (e.g., git clone serverKey).
                 try {
                     await access(absoluteInstallDir);
+                    logger.log(`Confirmed target server directory exists: ${absoluteInstallDir}`);
                     sendAdminSseEvent('install_info', { serverKey, message: `Confirmed target server directory exists: ${absoluteInstallDir}` });
                 } catch (error: any) {
                      if (error.code === 'ENOENT') { // If it still doesn't exist (e.g. no commands, or commands didn't create it)
+                        logger.log(`Target server directory ${absoluteInstallDir} not found after commands. If commands were expected to create it, check them. Creating directory now.`);
                         sendAdminSseEvent('install_info', { serverKey, message: `Target server directory ${absoluteInstallDir} not found after commands. If commands were expected to create it, check them. Creating directory now.` });
                         await mkdir(absoluteInstallDir, { recursive: true }); // Create it as a fallback.
+                        logger.log(`Successfully created target server directory ${absoluteInstallDir}.`);
                         sendAdminSseEvent('install_info', { serverKey, message: `Successfully created target server directory ${absoluteInstallDir}.` });
                      } else { // Other access error
+                        logger.error(`Error after commands, verifying/creating directory '${absoluteInstallDir}': ${error.message}`);
                         sendAdminSseEvent('install_error', { serverKey, error: `Error after commands, verifying/creating directory '${absoluteInstallDir}': ${error.message}` });
                         throw error;
                      }
@@ -441,7 +460,7 @@ if (enableAdminUI) {
                 sendAdminSseEvent('install_complete', { serverKey, code: 0, message: "Installation process completed successfully." });
 
             } catch (error: any) {
-                console.error(`[${clientId}] Error during server installation process for '${serverKey}':`, error);
+                logger.error(`[${clientId}] Error during server installation process for '${serverKey}':`, error);
                 if (!error.message?.includes('failed with exit code') && 
                     !error.message?.includes('Failed to create execution directory') &&
                     !error.message?.includes('Failed to create installation directory') &&
@@ -461,7 +480,7 @@ if (enableAdminUI) {
             return;
         }
 
-        console.log(`[Admin SSE] Connection received for session: ${sessionId}`);
+        logger.log(`[Admin SSE] Connection received for session: ${sessionId}`);
 
         // Set SSE headers
         res.writeHead(200, {
@@ -475,12 +494,12 @@ if (enableAdminUI) {
 
         // Store connection
         adminSseConnections.set(sessionId, res);
-        console.log(`[Admin SSE] Connection stored for session ${sessionId}. Total admin connections: ${adminSseConnections.size}`);
+        logger.log(`[Admin SSE] Connection stored for session ${sessionId}. Total admin connections: ${adminSseConnections.size}`);
 
         // Remove connection on close
         req.on('close', () => {
             adminSseConnections.delete(sessionId);
-            console.log(`[Admin SSE] Connection closed for session ${sessionId}. Total admin connections: ${adminSseConnections.size}`);
+            logger.log(`[Admin SSE] Connection closed for session ${sessionId}. Total admin connections: ${adminSseConnections.size}`);
         });
     });
 
@@ -489,7 +508,7 @@ if (enableAdminUI) {
 
 
     // Static file serving for admin UI should also be inside the if block
-    console.log(`Serving static admin files from: ${publicPath}`);
+    logger.log(`Serving static admin files from: ${publicPath}`);
     app.use('/admin', express.static(publicPath));
 
     app.get('/admin', (req, res) => {
@@ -506,7 +525,7 @@ if (enableAdminUI) {
 
 app.get("/sse", async (req, res) => {
   const clientId = req.ip || `client-${Date.now()}`;
-  console.log(`[${clientId}] SSE connection received`);
+  logger.log(`[${clientId}] SSE connection received`);
 
   if (authEnabled) {
     let authenticated = false;
@@ -516,10 +535,10 @@ app.get("/sse", async (req, res) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring('Bearer '.length).trim();
       if (allowedTokens.has(token)) {
-        console.log(`[${clientId}] Authorized SSE connection using Bearer Token.`);
+        logger.log(`[${clientId}] Authorized SSE connection using Bearer Token.`);
         authenticated = true;
       } else {
-        console.warn(`[${clientId}] Unauthorized SSE connection attempt. Invalid Bearer Token.`);
+        logger.warn(`[${clientId}] Unauthorized SSE connection attempt. Invalid Bearer Token.`);
       }
     }
 
@@ -530,16 +549,16 @@ app.get("/sse", async (req, res) => {
       const providedKey = headerKey || queryKey;
 
       if (providedKey && allowedKeys.has(providedKey)) {
-        console.log(`[${clientId}] Authorized SSE connection using ${headerKey ? 'header' : 'query'} API Key.`);
+        logger.log(`[${clientId}] Authorized SSE connection using ${headerKey ? 'header' : 'query'} API Key.`);
         authenticated = true;
       } else if (providedKey) {
-         console.warn(`[${clientId}] Unauthorized SSE connection attempt. Invalid API Key.`);
+         logger.warn(`[${clientId}] Unauthorized SSE connection attempt. Invalid API Key.`);
       }
     }
 
     // If authentication is enabled but no valid credentials were provided
     if (!authenticated) {
-      console.warn(`[${clientId}] Unauthorized SSE connection attempt. No valid credentials provided.`);
+      logger.warn(`[${clientId}] Unauthorized SSE connection attempt. No valid credentials provided.`);
       res.status(401).send('Unauthorized');
       return;
     }
@@ -554,23 +573,23 @@ app.get("/sse", async (req, res) => {
     // If client provides a session_id in query, and it exists on the server,
     // it implies an attempt to reconnect or a stale client. Clean up the old one.
     if (sessionIdFromClientQuery && sseTransports.has(sessionIdFromClientQuery)) {
-      console.log(`[${clientId}] Client provided existing session ID: ${sessionIdFromClientQuery}. Closing and removing old transport.`);
+      logger.log(`[${clientId}] Client provided existing session ID: ${sessionIdFromClientQuery}. Closing and removing old transport.`);
       const existingTransport = sseTransports.get(sessionIdFromClientQuery)!;
       sseTransports.delete(sessionIdFromClientQuery); // Remove old one from map
       if (typeof existingTransport.close === 'function') {
         existingTransport.close().catch(err =>
-          console.warn(`[${clientId}] Non-critical error closing existing transport for session ${sessionIdFromClientQuery}:`, err)
+          logger.warn(`[${clientId}] Non-critical error closing existing transport for session ${sessionIdFromClientQuery}:`, err)
         );
       }
-      console.log(`[${clientId}] Old transport for session ${sessionIdFromClientQuery} removed. Active sessions: ${sseTransports.size}`);
+      logger.log(`[${clientId}] Old transport for session ${sessionIdFromClientQuery} removed. Active sessions: ${sseTransports.size}`);
     } else if (sessionIdFromClientQuery) {
-      console.log(`[${clientId}] Client provided session ID ${sessionIdFromClientQuery}, but no active session found for it. A new session will be created.`);
+      logger.log(`[${clientId}] Client provided session ID ${sessionIdFromClientQuery}, but no active session found for it. A new session will be created.`);
     }
 
     // Always create a new SSEServerTransport.
     // It will generate its own internal sessionId, which will be sent to the client via the 'endpoint' event.
     // The client is expected to use this server-provided sessionId for subsequent POST /message requests.
-    console.log(`[${clientId}] Creating new SSEServerTransport...`);
+    logger.log(`[${clientId}] Creating new SSEServerTransport...`);
     clientTransport = new SSEServerTransport("/message", res);
     actualTransportSessionId = clientTransport.sessionId; // Get the ID generated by the transport itself
 
@@ -579,43 +598,43 @@ app.get("/sse", async (req, res) => {
     }
     
     sseTransports.set(actualTransportSessionId, clientTransport); // Store the new transport with its own generated ID
-    console.log(`[${clientId}] New SSE transport created. Actual Session ID for this connection: ${actualTransportSessionId}. Client initially provided: ${sessionIdFromClientQuery || 'none'}. Active sessions: ${sseTransports.size}`);
+    logger.log(`[${clientId}] New SSE transport created. Actual Session ID for this connection: ${actualTransportSessionId}. Client initially provided: ${sessionIdFromClientQuery || 'none'}. Active sessions: ${sseTransports.size}`);
     
     const currentTransport = clientTransport; // To use in closures for onclose/onerror
     const currentSessionId = actualTransportSessionId; // To use in closures
 
     currentTransport.onerror = (err: any) => {
-      console.error(`[${clientId}] SSE transport error for session ${currentSessionId}: ${err?.stack || err?.message || err}`);
+      logger.error(`[${clientId}] SSE transport error for session ${currentSessionId}: ${err?.stack || err?.message || err}`);
       if (sseTransports.has(currentSessionId)) {
         sseTransports.delete(currentSessionId);
-        console.log(`[${clientId}] Transport for session ${currentSessionId} removed due to error. Active sessions: ${sseTransports.size}`);
+        logger.log(`[${clientId}] Transport for session ${currentSessionId} removed due to error. Active sessions: ${sseTransports.size}`);
       }
     };
 
     currentTransport.onclose = () => {
-      console.log(`[${clientId}] SSE client disconnected for session ${currentSessionId}.`);
+      logger.log(`[${clientId}] SSE client disconnected for session ${currentSessionId}.`);
       if (sseTransports.has(currentSessionId)) {
         sseTransports.delete(currentSessionId);
-        console.log(`[${clientId}] Transport for session ${currentSessionId} removed on close. Active sessions: ${sseTransports.size}`);
+        logger.log(`[${clientId}] Transport for session ${currentSessionId} removed on close. Active sessions: ${sseTransports.size}`);
       }
     };
 
-    console.log(`[${clientId}] Attempting server.connect for new transport with session ${currentSessionId}...`);
+    logger.log(`[${clientId}] Attempting server.connect for new transport with session ${currentSessionId}...`);
     await server.connect(currentTransport);
-    console.log(`[${clientId}] SSE client connected successfully via server.connect for session ${currentSessionId}.`);
+    logger.log(`[${clientId}] SSE client connected successfully via server.connect for session ${currentSessionId}.`);
 
   } catch (error: any) {
     const logSessionIdOnError = actualTransportSessionId || sessionIdFromClientQuery || "unknown_during_error_handling";
-    console.error(`[${clientId}] Failed during SSE setup or connection for session attempt related to ${logSessionIdOnError}:`, error);
+    logger.error(`[${clientId}] Failed during SSE setup or connection for session attempt related to ${logSessionIdOnError}:`, error);
     
     // If a transport was created and added to the map, ensure it's cleaned up on error.
     if (actualTransportSessionId && sseTransports.has(actualTransportSessionId)) {
        sseTransports.delete(actualTransportSessionId);
-       console.log(`[${clientId}] Transport for session ${actualTransportSessionId} removed due to setup/connection error. Active sessions: ${sseTransports.size}`);
+       logger.log(`[${clientId}] Transport for session ${actualTransportSessionId} removed due to setup/connection error. Active sessions: ${sseTransports.size}`);
     }
     // Ensure clientTransport (if partially created) is closed on error.
     if (clientTransport && typeof clientTransport.close === 'function') {
-      clientTransport.close().catch((e: any) => console.error(`[${clientId}] Error closing transport for session ${logSessionIdOnError} after connection failure:`, e));
+      clientTransport.close().catch((e: any) => logger.error(`[${clientId}] Error closing transport for session ${logSessionIdOnError} after connection failure:`, e));
     }
     if (!res.headersSent) {
       res.status(500).send('Failed to establish SSE connection');
@@ -628,7 +647,7 @@ app.get("/sse", async (req, res) => {
 
 app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SSE and POST for messages
   const clientId = req.ip || `client-http-${Date.now()}`;
-  console.log(`[${clientId}] Received ${req.method} request on /mcp`);
+  logger.log(`[${clientId}] Received ${req.method} request on /mcp`);
 
   // Authentication check (similar to /sse)
   if (authEnabled) {
@@ -637,10 +656,10 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring('Bearer '.length).trim();
       if (allowedTokens.has(token)) {
-        console.log(`[${clientId}] Authorized /mcp connection using Bearer Token.`);
+        logger.log(`[${clientId}] Authorized /mcp connection using Bearer Token.`);
         authenticated = true;
       } else {
-        console.warn(`[${clientId}] Unauthorized /mcp (Bearer) for ${req.method}. Invalid Token.`);
+        logger.warn(`[${clientId}] Unauthorized /mcp (Bearer) for ${req.method}. Invalid Token.`);
       }
     }
     if (!authenticated && allowedKeys.size > 0) {
@@ -648,14 +667,14 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
       const queryKey = req.query.key as string | undefined;
       const providedKey = headerKey || queryKey;
       if (providedKey && allowedKeys.has(providedKey)) {
-        console.log(`[${clientId}] Authorized /mcp connection using ${headerKey ? 'header' : 'query'} API Key.`);
+        logger.log(`[${clientId}] Authorized /mcp connection using ${headerKey ? 'header' : 'query'} API Key.`);
         authenticated = true;
       } else if (providedKey) {
-         console.warn(`[${clientId}] Unauthorized /mcp (API Key) for ${req.method}. Invalid Key.`);
+         logger.warn(`[${clientId}] Unauthorized /mcp (API Key) for ${req.method}. Invalid Key.`);
       }
     }
     if (!authenticated) {
-      console.warn(`[${clientId}] Unauthorized /mcp for ${req.method}. No valid credentials.`);
+      logger.warn(`[${clientId}] Unauthorized /mcp for ${req.method}. No valid credentials.`);
       res.status(401).send('Unauthorized');
       return;
     }
@@ -668,7 +687,7 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
   if (clientProvidedSessionId) {
     httpTransport = streamableHttpTransports.get(clientProvidedSessionId);
     if (!httpTransport) {
-      console.warn(`[${clientId}] /mcp: Client provided Mcp-Session-Id '${clientProvidedSessionId}', but no active transport found. Responding 404.`);
+      logger.warn(`[${clientId}] /mcp: Client provided Mcp-Session-Id '${clientProvidedSessionId}', but no active transport found. Responding 404.`);
       if (!res.headersSent) {
         res.status(404).json({
             jsonrpc: "2.0",
@@ -678,11 +697,11 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
       }
       return;
     }
-    console.log(`[${clientId}] /mcp: Using existing transport for Mcp-Session-Id: ${clientProvidedSessionId}`);
+    logger.log(`[${clientId}] /mcp: Using existing transport for Mcp-Session-Id: ${clientProvidedSessionId}`);
   } else {
     // No Mcp-Session-Id from client, or it's an InitializeRequest that might not have one yet.
     // Create a new transport. The transport itself will generate a session ID.
-    console.log(`[${clientId}] /mcp: No Mcp-Session-Id from client, or new session. Creating new StreamableHTTPServerTransport.`);
+    logger.log(`[${clientId}] /mcp: No Mcp-Session-Id from client, or new session. Creating new StreamableHTTPServerTransport.`);
     const tempGeneratedIdForEarlyMap = `pending-${crypto.randomBytes(8).toString('hex')}`;
     let capturedHttpTransportInstance: StreamableHTTPServerTransport | null = null; // To ensure closure captures the correct instance
 
@@ -690,12 +709,12 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
         sessionIdGenerator: () => crypto.randomUUID(), // Use crypto.randomUUID for session ID generation
         enableJsonResponse: false,
         onsessioninitialized: (sdkGeneratedSessionId: string) => {
-            console.log(`[${clientId}] /mcp: SDK 'onsessioninitialized' called. SDK Session ID: ${sdkGeneratedSessionId}`);
+            logger.log(`[${clientId}] /mcp: SDK 'onsessioninitialized' called. SDK Session ID: ${sdkGeneratedSessionId}`);
             if (capturedHttpTransportInstance) {
                 // The SDK has now initialized the session and `capturedHttpTransportInstance.sessionId` should be set.
                 // Verify it matches sdkGeneratedSessionId for sanity.
                 if (capturedHttpTransportInstance.sessionId !== sdkGeneratedSessionId) {
-                    console.warn(`[${clientId}] /mcp: Discrepancy! sdkGeneratedSessionId (${sdkGeneratedSessionId}) vs transport.sessionId (${capturedHttpTransportInstance.sessionId}). Using sdkGeneratedSessionId.`);
+                    logger.warn(`[${clientId}] /mcp: Discrepancy! sdkGeneratedSessionId (${sdkGeneratedSessionId}) vs transport.sessionId (${capturedHttpTransportInstance.sessionId}). Using sdkGeneratedSessionId.`);
                 }
                 const finalSessionId = sdkGeneratedSessionId; // Use the ID from the callback
 
@@ -707,12 +726,12 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
                         if (transportSessionIdToUse === tempGeneratedIdForEarlyMap) {
                             transportSessionIdToUse = finalSessionId;
                         }
-                        console.log(`[${clientId}] /mcp: Transport map updated. Temp ID '${tempGeneratedIdForEarlyMap}' replaced with final '${finalSessionId}'. Active: ${streamableHttpTransports.size}`);
+                        logger.log(`[${clientId}] /mcp: Transport map updated. Temp ID '${tempGeneratedIdForEarlyMap}' replaced with final '${finalSessionId}'. Active: ${streamableHttpTransports.size}`);
                     } else {
-                        console.error(`[${clientId}] /mcp: Mismatch during onsessioninitialized! Temp ID ${tempGeneratedIdForEarlyMap} found but instance differs.`);
+                        logger.error(`[${clientId}] /mcp: Mismatch during onsessioninitialized! Temp ID ${tempGeneratedIdForEarlyMap} found but instance differs.`);
                         if (!streamableHttpTransports.has(finalSessionId) || streamableHttpTransports.get(finalSessionId) !== capturedHttpTransportInstance) {
                            streamableHttpTransports.set(finalSessionId, capturedHttpTransportInstance);
-                           console.warn(`[${clientId}] /mcp: Force-mapped transport with final ID '${finalSessionId}' due to instance mismatch.`);
+                           logger.warn(`[${clientId}] /mcp: Force-mapped transport with final ID '${finalSessionId}' due to instance mismatch.`);
                         }
                     }
                 } else {
@@ -721,11 +740,11 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
                         if (transportSessionIdToUse === tempGeneratedIdForEarlyMap) {
                            transportSessionIdToUse = finalSessionId;
                         }
-                        console.log(`[${clientId}] /mcp: Transport (re)added to map with final ID '${finalSessionId}' (temp not found or instance check). Active: ${streamableHttpTransports.size}`);
+                        logger.log(`[${clientId}] /mcp: Transport (re)added to map with final ID '${finalSessionId}' (temp not found or instance check). Active: ${streamableHttpTransports.size}`);
                     }
                 }
             } else {
-                 console.error(`[${clientId}] /mcp: onsessioninitialized called but capturedHttpTransportInstance is null. SDK SessionId: ${sdkGeneratedSessionId}`);
+                 logger.error(`[${clientId}] /mcp: onsessioninitialized called but capturedHttpTransportInstance is null. SDK SessionId: ${sdkGeneratedSessionId}`);
             }
         },
     };
@@ -736,14 +755,14 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
     // Store with a temporary ID. This will be updated by onsessioninitialized when the SDK provides the actual session ID.
     transportSessionIdToUse = tempGeneratedIdForEarlyMap;
     streamableHttpTransports.set(tempGeneratedIdForEarlyMap, httpTransport);
-    console.log(`[${clientId}] /mcp: New transport created. Stored with temp ID: ${tempGeneratedIdForEarlyMap}. Active transports: ${streamableHttpTransports.size}`);
+    logger.log(`[${clientId}] /mcp: New transport created. Stored with temp ID: ${tempGeneratedIdForEarlyMap}. Active transports: ${streamableHttpTransports.size}`);
 
     const currentTransportForHandlers = httpTransport; // Use this specific instance in handlers
 
     currentTransportForHandlers.onerror = (error: Error) => {
       // Use currentTransportForHandlers.sessionId if available, otherwise fallback to transportSessionIdToUse (which might be temp or final)
       const idToClean = currentTransportForHandlers.sessionId || transportSessionIdToUse;
-      console.error(`[${clientId}] /mcp: StreamableHTTPServerTransport error for session related to ${idToClean}:`, error);
+      logger.error(`[${clientId}] /mcp: StreamableHTTPServerTransport error for session related to ${idToClean}:`, error);
       
       if (streamableHttpTransports.get(tempGeneratedIdForEarlyMap) === currentTransportForHandlers) {
         streamableHttpTransports.delete(tempGeneratedIdForEarlyMap);
@@ -751,26 +770,26 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
       if (currentTransportForHandlers.sessionId && streamableHttpTransports.get(currentTransportForHandlers.sessionId) === currentTransportForHandlers) {
         streamableHttpTransports.delete(currentTransportForHandlers.sessionId);
       }
-      console.log(`[${clientId}] /mcp: Transport for session related to ${idToClean} removed due to error. Active: ${streamableHttpTransports.size}`);
+      logger.log(`[${clientId}] /mcp: Transport for session related to ${idToClean} removed due to error. Active: ${streamableHttpTransports.size}`);
     };
 
     currentTransportForHandlers.onclose = () => {
       const idToClean = currentTransportForHandlers.sessionId || transportSessionIdToUse;
-      console.log(`[${clientId}] /mcp: StreamableHTTPServerTransport closed for session related to ${idToClean}.`);
+      logger.log(`[${clientId}] /mcp: StreamableHTTPServerTransport closed for session related to ${idToClean}.`);
       if (streamableHttpTransports.get(tempGeneratedIdForEarlyMap) === currentTransportForHandlers) {
         streamableHttpTransports.delete(tempGeneratedIdForEarlyMap);
       }
       if (currentTransportForHandlers.sessionId && streamableHttpTransports.get(currentTransportForHandlers.sessionId) === currentTransportForHandlers) {
         streamableHttpTransports.delete(currentTransportForHandlers.sessionId);
       }
-      console.log(`[${clientId}] /mcp: Transport for session related to ${idToClean} removed on close. Active: ${streamableHttpTransports.size}`);
+      logger.log(`[${clientId}] /mcp: Transport for session related to ${idToClean} removed on close. Active: ${streamableHttpTransports.size}`);
     };
 
     try {
       await server.connect(currentTransportForHandlers);
-      console.log(`[${clientId}] /mcp: New transport (temp ID: ${transportSessionIdToUse}, awaiting final SDK sessionId) connected to server.`);
+      logger.log(`[${clientId}] /mcp: New transport (temp ID: ${transportSessionIdToUse}, awaiting final SDK sessionId) connected to server.`);
     } catch (connectError: any) {
-      console.error(`[${clientId}] /mcp: Failed to connect new transport to server:`, connectError);
+      logger.error(`[${clientId}] /mcp: Failed to connect new transport to server:`, connectError);
       streamableHttpTransports.delete(tempGeneratedIdForEarlyMap); // Clean up temp entry
       if (!res.headersSent) {
         res.status(500).json({
@@ -786,7 +805,7 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
   if (!httpTransport) {
     // This case should ideally be caught earlier if clientProvidedSessionId was present but not found.
     // If it's a new session and httpTransport somehow didn't get created.
-    console.error(`[${clientId}] /mcp: Transport is unexpectedly undefined before handling request.`);
+    logger.error(`[${clientId}] /mcp: Transport is unexpectedly undefined before handling request.`);
     if (!res.headersSent) {
         res.status(500).json({
             jsonrpc: "2.0",
@@ -797,7 +816,7 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
     return;
   }
 
-  console.log(`[${clientId}] /mcp: About to call transport.handleRequest for session ${transportSessionIdToUse || httpTransport.sessionId} - Method: ${req.method}`);
+  logger.log(`[${clientId}] /mcp: About to call transport.handleRequest for session ${transportSessionIdToUse || httpTransport.sessionId} - Method: ${req.method}`);
   try {
     // The SDK's StreamableHTTPServerTransport.handleRequest should:
     // - For new sessions (e.g., on InitializeRequest), establish the session,
@@ -805,10 +824,10 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
     // - For existing sessions, use the provided Mcp-Session-Id.
     // - Handle both POST (for client messages) and GET (for server-initiated SSE streams).
     await httpTransport.handleRequest(req, res, req.body);
-    console.log(`[${clientId}] /mcp: transport.handleRequest completed for session ${transportSessionIdToUse || httpTransport.sessionId}. Response stream managed by transport.`);
+    logger.log(`[${clientId}] /mcp: transport.handleRequest completed for session ${transportSessionIdToUse || httpTransport.sessionId}. Response stream managed by transport.`);
   } catch (error: any) {
     const idToLog = transportSessionIdToUse || httpTransport.sessionId;
-    console.error(`[${clientId}] /mcp: Error during transport.handleRequest for session ${idToLog}:`, error);
+    logger.error(`[${clientId}] /mcp: Error during transport.handleRequest for session ${idToLog}:`, error);
     if (!res.headersSent) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -823,26 +842,26 @@ app.all("/mcp", async (req, res) => { // Changed to app.all to handle GET for SS
 });
 app.post("/message", async (req, res) => {
   const sessionId = req.query.sessionId as string;
-  console.log(`Received POST /message for Session ID: ${sessionId}`);
+  logger.log(`Received POST /message for Session ID: ${sessionId}`);
 
   if (!sessionId) {
-    console.error("POST /message error: Missing sessionId query parameter.");
+    logger.error("POST /message error: Missing sessionId query parameter.");
     return res.status(400).send({ error: "Missing sessionId query parameter" });
   }
 
   const transport = sseTransports.get(sessionId);
 
   if (!transport) {
-    console.error(`POST /message error: No active transport found for Session ID: ${sessionId}`);
+    logger.error(`POST /message error: No active transport found for Session ID: ${sessionId}`);
     return res.status(404).send({ error: `No active session found for ID ${sessionId}` });
   }
 
-  console.log(`Found transport for session ${sessionId}. Handling POST message...`);
+  logger.log(`Found transport for session ${sessionId}. Handling POST message...`);
   try {
     await transport.handlePostMessage(req, res, req.body);
-    console.log(`Successfully handled POST for session ${sessionId}`);
+    logger.log(`Successfully handled POST for session ${sessionId}`);
   } catch (error: any) {
-    console.error(`Error in transport.handlePostMessage for session ${sessionId}:`, error);
+    logger.error(`Error in transport.handlePostMessage for session ${sessionId}:`, error);
     if (!res.headersSent) {
       res.status(500).send({ error: "Failed to process message via transport" });
     }
@@ -854,62 +873,62 @@ const PORT = process.env.PORT || 3663;
 
 expressServer.listen(PORT, () => {
   const baseUrl = `http://localhost:${PORT}`;
-  console.log(`MCP Proxy Server is running.`);
-  console.log(`SSE endpoint: ${baseUrl}/sse`);
-  console.log(`Streamable HTTP (MCP) endpoint: ${baseUrl}/mcp`);
+  logger.log(`MCP Proxy Server is running.`);
+  logger.log(`SSE endpoint: ${baseUrl}/sse`);
+  logger.log(`Streamable HTTP (MCP) endpoint: ${baseUrl}/mcp`);
 
   if (authEnabled && allowedKeys.size > 0) {
     const firstKey = allowedKeys.values().next().value;
-    console.log(`Example authenticated SSE endpoint: ${baseUrl}/sse?key=${firstKey}`);
-    console.log(`Example authenticated MCP endpoint: ${baseUrl}/mcp?key=${firstKey} (or use X-Api-Key header)`);
+    logger.log(`Example authenticated SSE endpoint: ${baseUrl}/sse?key=${firstKey}`);
+    logger.log(`Example authenticated MCP endpoint: ${baseUrl}/mcp?key=${firstKey} (or use X-Api-Key header)`);
   }
 
   if (enableAdminUI) {
-      console.log(`Admin UI available at ${baseUrl}/admin`);
+      logger.log(`Admin UI available at ${baseUrl}/admin`);
   }
 });
 
 const shutdown = async (signal: string) => {
-  console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+  logger.log(`\nReceived ${signal}. Shutting down gracefully...`);
   try {
-    console.log("Closing MCP Server (disconnecting transports)...");
+    logger.log("Closing MCP Server (disconnecting transports)...");
     await server.close();
-    console.log("MCP Server closed.");
+    logger.log("MCP Server closed.");
 
-    console.log("Cleaning up backend clients...");
+    logger.log("Cleaning up backend clients...");
     await cleanup();
-    console.log("Backend clients cleaned up.");
+    logger.log("Backend clients cleaned up.");
 
     // Kill any active terminal processes
-    console.log("Killing active terminal sessions...");
+    logger.log("Killing active terminal sessions...");
     // Add type annotations for the forEach callback parameters
     activeTerminals.forEach((term: ActiveTerminal, id: string) => {
-        console.log(`Killing terminal ${id} (PID: ${term.ptyProcess.pid})`);
+        logger.log(`Killing terminal ${id} (PID: ${term.ptyProcess.pid})`);
         term.ptyProcess.kill();
     });
     activeTerminals.clear();
     TERMINAL_OUTPUT_SSE_CONNECTIONS.clear(); // Also clear SSE connections for terminals
-    console.log("Active terminal sessions killed.");
+    logger.log("Active terminal sessions killed.");
 
 
-    console.log("Closing HTTP server...");
+    logger.log("Closing HTTP server...");
     expressServer.close((err) => {
       if (err) {
-        console.error("Error closing HTTP server:", err);
+        logger.error("Error closing HTTP server:", err);
         process.exit(1);
       } else {
-        console.log("HTTP server closed.");
+        logger.log("HTTP server closed.");
         process.exit(0);
       }
     });
 
     setTimeout(() => {
-      console.error("Graceful shutdown timed out. Forcing exit.");
+      logger.error("Graceful shutdown timed out. Forcing exit.");
       process.exit(1);
     }, 10000); // Increased timeout slightly
 
   } catch (error) {
-    console.error("Error during graceful shutdown:", error);
+    logger.error("Error during graceful shutdown:", error);
     process.exit(1);
   }
 };
