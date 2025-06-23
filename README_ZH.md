@@ -175,6 +175,14 @@
     export TOOLS_FOLDER=/srv/mcp_tools
     ```
 
+-   **`LOGGING`**: (可选) 控制服务器输出的最低日志级别。
+    -   可能的值（不区分大小写）：`error`, `warn`, `info`, `debug`。
+    -   将显示指定级别及以上的所有日志。
+    -   默认值：`info`。
+    ```bash
+    export LOGGING="debug"
+    ```
+
 -   **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`**: (可选) 控制 SSE 工具调用失败时是否自动重连并重试。设置为 `"true"` 启用，`"false"` 禁用。默认: `true`。有关详细信息，请参阅“增强的可靠性特性”部分。
     ```bash
     export RETRY_SSE_TOOL_CALL_ON_DISCONNECT="true"

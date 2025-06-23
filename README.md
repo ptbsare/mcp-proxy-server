@@ -174,6 +174,14 @@ Example `config/tool_config.json`:
     export TOOLS_FOLDER=/srv/mcp_tools
     ```
 
+-   **`LOGGING`**: (Optional) Controls the minimum log level output by the server.
+    -   Possible values (case-insensitive): `error`, `warn`, `info`, `debug`.
+    -   Logs at the specified level and all levels above it will be shown.
+    -   Default: `info`.
+    ```bash
+    export LOGGING="debug"
+    ```
+
 -   **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`**: (Optional) Controls whether to automatically reconnect and retry on SSE tool call failures. Set to `"true"` to enable, `"false"` to disable. Default: `true`. See the "Enhanced Reliability Features" section for details.
     ```bash
     export RETRY_SSE_TOOL_CALL_ON_DISCONNECT="true"
