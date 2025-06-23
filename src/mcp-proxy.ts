@@ -325,9 +325,10 @@ const isConnectionError = (err: any): boolean => {
            lowerMessage.includes("transport is closed") || // SDK specific
            lowerMessage.includes("failed to fetch") || 
            lowerMessage.includes("not found") || //404
-           lowerMessage.includes("EOF") || // Network level
-           lowerMessage.includes("TLS") || // TLS handshake
-           lowerMessage.includes("timeout"); 
+           lowerMessage.includes("eof") || // Network level
+           lowerMessage.includes("tls") || // TLS handshake
+           lowerMessage.includes("timeout") ||
+           lowerMessage.includes("timed out"); 
   }
   return false;
 };
