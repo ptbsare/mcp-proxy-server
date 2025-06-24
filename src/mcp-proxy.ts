@@ -64,7 +64,7 @@ export const updateBackendConnections = async (newServerConfig: Config, newToolC
             if (isActive) {
                 activeServersConfigLocal[serverKey] = serverConf;
             } else {
-                 const serverName = serverConf.name || (isSSEConfig(serverConf) ? serverConf.url : isStdioConfig(serverConf) ? serverConf.command : serverKey);
+                 const serverName = serverKey;
                  logger.log(`Skipping inactive server during update: ${serverName}`);
             }
         }
