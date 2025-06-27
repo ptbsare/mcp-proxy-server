@@ -4,6 +4,7 @@ const saveToolConfigButton = document.getElementById('save-tool-config-button');
 // const saveToolStatus = document.getElementById('save-tool-status'); // Removed: Declared in script.js
 // Note: Assumes currentToolConfig and discoveredTools variables are globally accessible from script.js or passed.
 // Note: Assumes triggerReload function is globally accessible from script.js or passed.
+let serverToolnameSeparator = '--'; // Default separator
 
 // --- Tool Configuration Management ---
 async function loadToolData() {
@@ -11,14 +12,16 @@ async function loadToolData() {
     saveToolStatus.textContent = 'Loading tool data...';
     window.toolDataLoaded = false; // Reset flag during load attempt (use global flag)
     try {
-        // Fetch both discovered tools and tool config concurrently
-        const [toolsResponse, configResponse] = await Promise.all([
+        // Fetch discovered tools, tool config, and environment info concurrently
+        const [toolsResponse, configResponse, envResponse] = await Promise.all([
             fetch('/admin/tools/list'),
-            fetch('/admin/tools/config')
+            fetch('/admin/tools/config'),
+            fetch('/admin/environment') // Fetch environment info
         ]);
 
         if (!toolsResponse.ok) throw new Error(`Failed to fetch discovered tools: ${toolsResponse.statusText}`);
         if (!configResponse.ok) throw new Error(`Failed to fetch tool config: ${configResponse.statusText}`);
+        if (!envResponse.ok) throw new Error(`Failed to fetch environment info: ${envResponse.statusText}`); // Check env response
 
         const toolsResult = await toolsResponse.json();
         window.discoveredTools = toolsResult.tools || []; // Expecting { tools: [...] } (use global var)
@@ -26,9 +29,12 @@ async function loadToolData() {
         window.currentToolConfig = await configResponse.json(); // Use global var
         if (!window.currentToolConfig || typeof window.currentToolConfig !== 'object' || !window.currentToolConfig.tools) {
              console.warn("Received invalid tool configuration format, initializing empty.", window.currentToolConfig);
-             window.currentToolConfig = { tools: {} }; // Initialize if invalid or empty
+         window.currentToolConfig = { tools: {} }; // Initialize if invalid or empty
         }
 
+        const envResult = await envResponse.json(); // Parse environment info
+        serverToolnameSeparator = envResult.serverToolnameSeparator || '--'; // Update separator
+        console.log(`Using server toolname separator from backend: "${serverToolnameSeparator}"`);
 
         renderTools(); // Render using both discovered and configured data
         window.toolDataLoaded = true; // Set global flag only after successful load and render
@@ -66,7 +72,7 @@ function renderTools() {
 
     // Render discovered tools first, merging with config
     discoveredTools.forEach(tool => {
-        const toolKey = `${tool.serverName}--${tool.name}`; // Unique key
+        const toolKey = `${tool.serverName}${serverToolnameSeparator}${tool.name}`; // Use the fetched separator
         const config = currentToolConfig.tools[toolKey] || {}; // Get config or empty object
         // For discovered tools, their server is considered active by the proxy at connection time
         renderToolEntry(toolKey, tool, config, false, true); // isConfigOnly = false, isServerActive = true
@@ -76,7 +82,8 @@ function renderTools() {
     // Render any remaining configured tools that were not discovered
     configuredToolKeys.forEach(toolKey => {
          const config = currentToolConfig.tools[toolKey];
-         const serverKeyForConfigOnlyTool = toolKey.split('--')[0];
+         // Use the fetched separator for splitting
+         const serverKeyForConfigOnlyTool = toolKey.split(serverToolnameSeparator)[0];
          let isServerActiveForConfigOnlyTool = true; // Default to true if server config not found or active flag is missing/true
 
          if (window.currentServerConfig && window.currentServerConfig.mcpServers && window.currentServerConfig.mcpServers[serverKeyForConfigOnlyTool]) {

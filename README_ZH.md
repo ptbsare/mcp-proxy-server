@@ -175,6 +175,14 @@
     export TOOLS_FOLDER=/srv/mcp_tools
     ```
 
+-   **`SERVER_TOOLNAME_SEPERATOR`**: (可选) 定义用于组合服务器名称和工具名称以生成工具唯一键的分隔符（例如 `server-key--tool-name`）。此键在内部和 `tool_config.json` 文件中使用。
+    -   默认值：`--`。
+    -   必须至少包含 2 个字符，且只能包含字母（a-z, A-Z）、数字（0-9）、连字符（`-`）和下划线（`_`）。
+    -   如果提供的值无效，将使用默认值（`--`）并记录警告。
+    ```bash
+    export SERVER_TOOLNAME_SEPERATOR="___" # 示例：使用三个下划线
+    ```
+
 -   **`LOGGING`**: (可选) 控制服务器输出的最低日志级别。
     -   可能的值（不区分大小写）：`error`, `warn`, `info`, `debug`。
     -   将显示指定级别及以上的所有日志。

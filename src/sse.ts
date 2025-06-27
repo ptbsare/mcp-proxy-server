@@ -277,10 +277,18 @@ if (enableAdminUI) {
     });
 
     // New endpoint to provide environment info like TOOLS_FOLDER to the frontend
-    app.get('/admin/environment', isAuthenticated, (req, res) => {
-        res.json({
-            toolsFolder: process.env.TOOLS_FOLDER || "" 
-        });
+    app.get('/admin/environment', isAuthenticated, async (req, res) => {
+        try {
+            // Load config to get the current separator
+            const config = await loadConfig();
+            res.json({
+                toolsFolder: process.env.TOOLS_FOLDER || "",
+                serverToolnameSeparator: config.serverToolnameSeparator // Expose the separator
+            });
+        } catch (error: any) {
+            logger.error("Error fetching environment info for admin UI:", error);
+            res.status(500).json({ error: "Failed to fetch environment information." });
+        }
     });
 
 

@@ -47,9 +47,13 @@ export interface ProxySettings {
   stdioToolCallRetryDelayBaseMs?: number;
 }
 
+export const DEFAULT_SERVER_TOOLNAME_SEPERATOR = '--';
+export const SERVER_TOOLNAME_SEPERATOR_ENV_VAR = 'SERVER_TOOLNAME_SEPERATOR';
+
 export interface Config {
   mcpServers: Record<string, TransportConfig>;
   proxy?: ProxySettings;
+  serverToolnameSeparator?: string; // Added for the separator
 }
 
 
@@ -80,239 +84,263 @@ export function isHttpConfig(config: TransportConfig): config is TransportConfig
 export const loadConfig = async (): Promise<Config> => {
   // Define standard defaults for specific environment-overrideable proxy settings
   // This is moved here to be in scope for both try and catch blocks.
- const defaultEnvProxySettings = {
-     retrySseToolCall: true, // Renamed from retrySseToolCallOnDisconnect
-     sseToolCallMaxRetries: 2,
-     sseToolCallRetryDelayBaseMs: 300,
-     retryHttpToolCall: true,
-     httpToolCallMaxRetries: 2,
-     httpToolCallRetryDelayBaseMs: 300,
-     retryStdioToolCall: true,
-     stdioToolCallMaxRetries: 2,
-     stdioToolCallRetryDelayBaseMs: 300,
- };
+  const defaultEnvProxySettings = {
+    retrySseToolCall: true, // Renamed from retrySseToolCallOnDisconnect
+    sseToolCallMaxRetries: 2,
+    sseToolCallRetryDelayBaseMs: 300,
+    retryHttpToolCall: true,
+    httpToolCallMaxRetries: 2,
+    httpToolCallRetryDelayBaseMs: 300,
+    retryStdioToolCall: true,
+    stdioToolCallMaxRetries: 2,
+    stdioToolCallRetryDelayBaseMs: 300,
+  };
 
- try {
-   const configPath = resolve(process.cwd(), 'config', 'mcp_server.json');
-   console.log(`Attempting to load configuration from: ${configPath}`);
-   const fileContents = await readFile(configPath, 'utf-8');
-   const parsedConfig = JSON.parse(fileContents) as Config;
+  let serverToolnameSeparator = DEFAULT_SERVER_TOOLNAME_SEPERATOR;
+  const envSeparator = process.env[SERVER_TOOLNAME_SEPERATOR_ENV_VAR];
+  const separatorRegex = /^[a-zA-Z0-9_-]+$/; // Regex for valid characters
 
-   if (typeof parsedConfig !== 'object' || parsedConfig === null || typeof parsedConfig.mcpServers !== 'object') {
-       throw new Error('Invalid config format: mcpServers object not found.');
-   }
-
-   // Initialize proxy object on parsedConfig if it doesn't exist
-   parsedConfig.proxy = parsedConfig.proxy || {};
-
-   // Override with environment variables or defaults for the specific settings
-
-   // SSE Retry Settings
-   const sseRetryEnv = process.env.RETRY_SSE_TOOL_CALL; // Changed env var name
-   if (sseRetryEnv && sseRetryEnv.trim() !== '') {
-       parsedConfig.proxy.retrySseToolCall = sseRetryEnv.toLowerCase() === 'true'; // Changed property name
-   } else {
-       parsedConfig.proxy.retrySseToolCall = defaultEnvProxySettings.retrySseToolCall; // Changed property name
-   }
-
-   const sseMaxRetriesEnv = process.env.SSE_TOOL_CALL_MAX_RETRIES;
-   if (sseMaxRetriesEnv && sseMaxRetriesEnv.trim() !== '') {
-       const numVal = parseInt(sseMaxRetriesEnv, 10);
-       if (!isNaN(numVal)) {
-           parsedConfig.proxy.sseToolCallMaxRetries = numVal;
-       } else {
-           logger.warn(`Invalid value for SSE_TOOL_CALL_MAX_RETRIES: "${sseMaxRetriesEnv}". Using default: ${defaultEnvProxySettings.sseToolCallMaxRetries}.`);
-           parsedConfig.proxy.sseToolCallMaxRetries = defaultEnvProxySettings.sseToolCallMaxRetries;
-       }
-   } else {
-       parsedConfig.proxy.sseToolCallMaxRetries = defaultEnvProxySettings.sseToolCallMaxRetries;
-   }
-
-   const sseDelayBaseEnv = process.env.SSE_TOOL_CALL_RETRY_DELAY_BASE_MS;
-   if (sseDelayBaseEnv && sseDelayBaseEnv.trim() !== '') {
-       const numVal = parseInt(sseDelayBaseEnv, 10);
-       if (!isNaN(numVal)) {
-           parsedConfig.proxy.sseToolCallRetryDelayBaseMs = numVal;
-       } else {
-           logger.warn(`Invalid value for SSE_TOOL_CALL_RETRY_DELAY_BASE_MS: "${sseDelayBaseEnv}". Using default: ${defaultEnvProxySettings.sseToolCallRetryDelayBaseMs}.`);
-           parsedConfig.proxy.sseToolCallRetryDelayBaseMs = defaultEnvProxySettings.sseToolCallRetryDelayBaseMs;
-       }
-   } else {
-       parsedConfig.proxy.sseToolCallRetryDelayBaseMs = defaultEnvProxySettings.sseToolCallRetryDelayBaseMs;
-   }
+  if (envSeparator !== undefined && envSeparator.trim() !== '') {
+    const trimmedSeparator = envSeparator.trim();
+    if (trimmedSeparator.length >= 2 && separatorRegex.test(trimmedSeparator)) {
+      serverToolnameSeparator = trimmedSeparator;
+      logger.log(`Using server toolname separator from environment variable ${SERVER_TOOLNAME_SEPERATOR_ENV_VAR}: "${serverToolnameSeparator}"`);
+    } else {
+      logger.warn(`Invalid value for environment variable ${SERVER_TOOLNAME_SEPERATOR_ENV_VAR}: "${envSeparator}". Separator must be at least 2 characters long and contain only letters, numbers, '-', and '_'. Using default: "${DEFAULT_SERVER_TOOLNAME_SEPERATOR}".`);
+      serverToolnameSeparator = DEFAULT_SERVER_TOOLNAME_SEPERATOR;
+    }
+  } else {
+    logger.log(`Environment variable ${SERVER_TOOLNAME_SEPERATOR_ENV_VAR} not set or empty. Using default separator: "${DEFAULT_SERVER_TOOLNAME_SEPERATOR}".`);
+    serverToolnameSeparator = DEFAULT_SERVER_TOOLNAME_SEPERATOR;
+  }
 
 
-   // HTTP Retry Settings
-   const httpRetryEnv = process.env.RETRY_HTTP_TOOL_CALL;
-   if (httpRetryEnv && httpRetryEnv.trim() !== '') {
-       parsedConfig.proxy.retryHttpToolCall = httpRetryEnv.toLowerCase() === 'true';
-   } else {
-       parsedConfig.proxy.retryHttpToolCall = defaultEnvProxySettings.retryHttpToolCall;
-   }
+  try {
+    const configPath = resolve(process.cwd(), 'config', 'mcp_server.json');
+    console.log(`Attempting to load configuration from: ${configPath}`);
+    const fileContents = await readFile(configPath, 'utf-8');
+    const parsedConfig = JSON.parse(fileContents) as Config;
 
-   const maxRetriesEnv = process.env.HTTP_TOOL_CALL_MAX_RETRIES;
-   if (maxRetriesEnv && maxRetriesEnv.trim() !== '') {
-       const numVal = parseInt(maxRetriesEnv, 10);
-       if (!isNaN(numVal)) {
-           parsedConfig.proxy.httpToolCallMaxRetries = numVal;
-       } else {
-           logger.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnv}". Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
-           parsedConfig.proxy.httpToolCallMaxRetries = defaultEnvProxySettings.httpToolCallMaxRetries;
-       }
-   } else {
-       parsedConfig.proxy.httpToolCallMaxRetries = defaultEnvProxySettings.httpToolCallMaxRetries;
-   }
+    if (typeof parsedConfig !== 'object' || parsedConfig === null || typeof parsedConfig.mcpServers !== 'object') {
+      throw new Error('Invalid config format: mcpServers object not found.');
+    }
 
-   const delayBaseEnv = process.env.HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS;
-   if (delayBaseEnv && delayBaseEnv.trim() !== '') {
-       const numVal = parseInt(delayBaseEnv, 10);
-       if (!isNaN(numVal)) {
-           parsedConfig.proxy.httpToolCallRetryDelayBaseMs = numVal;
-       } else {
-           logger.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnv}". Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
-           parsedConfig.proxy.httpToolCallRetryDelayBaseMs = defaultEnvProxySettings.httpToolCallRetryDelayBaseMs;
-       }
-   } else {
-       parsedConfig.proxy.httpToolCallRetryDelayBaseMs = defaultEnvProxySettings.httpToolCallRetryDelayBaseMs;
-   }
+    // Initialize proxy object on parsedConfig if it doesn't exist
+    parsedConfig.proxy = parsedConfig.proxy || {};
 
-   // STDIO Retry Settings
-   const stdioRetryEnv = process.env.RETRY_STDIO_TOOL_CALL;
-   if (stdioRetryEnv && stdioRetryEnv.trim() !== '') {
-       parsedConfig.proxy.retryStdioToolCall = stdioRetryEnv.toLowerCase() === 'true';
-   } else {
-       parsedConfig.proxy.retryStdioToolCall = defaultEnvProxySettings.retryStdioToolCall;
-   }
+    // Override with environment variables or defaults for the specific settings
 
-   const stdioMaxRetriesEnv = process.env.STDIO_TOOL_CALL_MAX_RETRIES;
-   if (stdioMaxRetriesEnv && stdioMaxRetriesEnv.trim() !== '') {
-       const numVal = parseInt(stdioMaxRetriesEnv, 10);
-       if (!isNaN(numVal)) {
-           parsedConfig.proxy.stdioToolCallMaxRetries = numVal;
-       } else {
-           logger.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
-           parsedConfig.proxy.stdioToolCallMaxRetries = defaultEnvProxySettings.stdioToolCallMaxRetries;
-       }
-   } else {
-       parsedConfig.proxy.stdioToolCallMaxRetries = defaultEnvProxySettings.stdioToolCallMaxRetries;
-   }
+    // SSE Retry Settings
+    const sseRetryEnv = process.env.RETRY_SSE_TOOL_CALL; // Changed env var name
+    if (sseRetryEnv && sseRetryEnv.trim() !== '') {
+      parsedConfig.proxy.retrySseToolCall = sseRetryEnv.toLowerCase() === 'true'; // Changed property name
+    } else {
+      parsedConfig.proxy.retrySseToolCall = defaultEnvProxySettings.retrySseToolCall; // Changed property name
+    }
 
-   const stdioDelayBaseEnv = process.env.STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS;
-   if (stdioDelayBaseEnv && stdioDelayBaseEnv.trim() !== '') {
-       const numVal = parseInt(stdioDelayBaseEnv, 10);
-       if (!isNaN(numVal)) {
-           parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = numVal;
-       } else {
-           logger.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
-           parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs;
-       }
-   } else {
-       parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs;
-   }
+    const sseMaxRetriesEnv = process.env.SSE_TOOL_CALL_MAX_RETRIES;
+    if (sseMaxRetriesEnv && sseMaxRetriesEnv.trim() !== '') {
+      const numVal = parseInt(sseMaxRetriesEnv, 10);
+      if (!isNaN(numVal)) {
+        parsedConfig.proxy.sseToolCallMaxRetries = numVal;
+      } else {
+        logger.warn(`Invalid value for SSE_TOOL_CALL_MAX_RETRIES: "${sseMaxRetriesEnv}". Using default: ${defaultEnvProxySettings.sseToolCallMaxRetries}.`);
+        parsedConfig.proxy.sseToolCallMaxRetries = defaultEnvProxySettings.sseToolCallMaxRetries;
+      }
+    } else {
+      parsedConfig.proxy.sseToolCallMaxRetries = defaultEnvProxySettings.sseToolCallMaxRetries;
+    }
 
-   logger.log("Loaded config with final proxy settings (after env overrides):", JSON.stringify(parsedConfig.proxy).slice(1, -1));
-   return parsedConfig;
+    const sseDelayBaseEnv = process.env.SSE_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (sseDelayBaseEnv && sseDelayBaseEnv.trim() !== '') {
+      const numVal = parseInt(sseDelayBaseEnv, 10);
+      if (!isNaN(numVal)) {
+        parsedConfig.proxy.sseToolCallRetryDelayBaseMs = numVal;
+      } else {
+        logger.warn(`Invalid value for SSE_TOOL_CALL_RETRY_DELAY_BASE_MS: "${sseDelayBaseEnv}". Using default: ${defaultEnvProxySettings.sseToolCallRetryDelayBaseMs}.`);
+        parsedConfig.proxy.sseToolCallRetryDelayBaseMs = defaultEnvProxySettings.sseToolCallRetryDelayBaseMs;
+      }
+    } else {
+      parsedConfig.proxy.sseToolCallRetryDelayBaseMs = defaultEnvProxySettings.sseToolCallRetryDelayBaseMs;
+    }
 
- } catch (error: any) {
-   logger.error(`Error loading config/mcp_server.json: ${error.message}`);
 
-   // If file loading fails, initialize with environment variables or defaults for proxy settings
-   const proxySettingsFromEnvOrDefaults: ProxySettings = {
-       retrySseToolCall: defaultEnvProxySettings.retrySseToolCall,
-       sseToolCallMaxRetries: defaultEnvProxySettings.sseToolCallMaxRetries, // Default for SSE max retries
-       sseToolCallRetryDelayBaseMs: defaultEnvProxySettings.sseToolCallRetryDelayBaseMs, // Default for SSE retry delay
-       retryHttpToolCall: defaultEnvProxySettings.retryHttpToolCall,
-       httpToolCallMaxRetries: defaultEnvProxySettings.httpToolCallMaxRetries,
-       httpToolCallRetryDelayBaseMs: defaultEnvProxySettings.httpToolCallRetryDelayBaseMs,
-       retryStdioToolCall: defaultEnvProxySettings.retryStdioToolCall,
-       stdioToolCallMaxRetries: defaultEnvProxySettings.stdioToolCallMaxRetries,
-       stdioToolCallRetryDelayBaseMs: defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs,
-   };
+    // HTTP Retry Settings
+    const httpRetryEnv = process.env.RETRY_HTTP_TOOL_CALL;
+    if (httpRetryEnv && httpRetryEnv.trim() !== '') {
+      parsedConfig.proxy.retryHttpToolCall = httpRetryEnv.toLowerCase() === 'true';
+    } else {
+      parsedConfig.proxy.retryHttpToolCall = defaultEnvProxySettings.retryHttpToolCall;
+    }
 
-   // SSE Retry Settings (during error handling)
-   const sseRetryEnvCatch = process.env.RETRY_SSE_TOOL_CALL; // Changed env var name
-   if (sseRetryEnvCatch && sseRetryEnvCatch.trim() !== '') {
-       proxySettingsFromEnvOrDefaults.retrySseToolCall = sseRetryEnvCatch.toLowerCase() === 'true'; // Changed property name
-   }
+    const maxRetriesEnv = process.env.HTTP_TOOL_CALL_MAX_RETRIES;
+    if (maxRetriesEnv && maxRetriesEnv.trim() !== '') {
+      const numVal = parseInt(maxRetriesEnv, 10);
+      if (!isNaN(numVal)) {
+        parsedConfig.proxy.httpToolCallMaxRetries = numVal;
+      } else {
+        logger.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnv}". Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
+        parsedConfig.proxy.httpToolCallMaxRetries = defaultEnvProxySettings.httpToolCallMaxRetries;
+      }
+    } else {
+      parsedConfig.proxy.httpToolCallMaxRetries = defaultEnvProxySettings.httpToolCallMaxRetries;
+    }
 
-   const sseMaxRetriesEnvCatch = process.env.SSE_TOOL_CALL_MAX_RETRIES;
-   if (sseMaxRetriesEnvCatch && sseMaxRetriesEnvCatch.trim() !== '') {
-       const numVal = parseInt(sseMaxRetriesEnvCatch, 10);
-       if (!isNaN(numVal)) {
-           proxySettingsFromEnvOrDefaults.sseToolCallMaxRetries = numVal;
-       } else {
-           logger.warn(`Invalid value for SSE_TOOL_CALL_MAX_RETRIES: "${sseMaxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.sseToolCallMaxRetries}.`);
-       }
-   }
+    const delayBaseEnv = process.env.HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (delayBaseEnv && delayBaseEnv.trim() !== '') {
+      const numVal = parseInt(delayBaseEnv, 10);
+      if (!isNaN(numVal)) {
+        parsedConfig.proxy.httpToolCallRetryDelayBaseMs = numVal;
+      } else {
+        logger.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnv}". Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
+        parsedConfig.proxy.httpToolCallRetryDelayBaseMs = defaultEnvProxySettings.httpToolCallRetryDelayBaseMs;
+      }
+    } else {
+      parsedConfig.proxy.httpToolCallRetryDelayBaseMs = defaultEnvProxySettings.httpToolCallRetryDelayBaseMs;
+    }
 
-   const sseDelayBaseEnvCatch = process.env.SSE_TOOL_CALL_RETRY_DELAY_BASE_MS;
-   if (sseDelayBaseEnvCatch && sseDelayBaseEnvCatch.trim() !== '') {
-       const numVal = parseInt(sseDelayBaseEnvCatch, 10);
-       if (!isNaN(numVal)) {
-           proxySettingsFromEnvOrDefaults.sseToolCallRetryDelayBaseMs = numVal;
-       } else {
-           logger.warn(`Invalid value for SSE_TOOL_CALL_RETRY_DELAY_BASE_MS: "${sseDelayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.sseToolCallRetryDelayBaseMs}.`);
-       }
-   }
+    // STDIO Retry Settings
+    const stdioRetryEnv = process.env.RETRY_STDIO_TOOL_CALL;
+    if (stdioRetryEnv && stdioRetryEnv.trim() !== '') {
+      parsedConfig.proxy.retryStdioToolCall = stdioRetryEnv.toLowerCase() === 'true';
+    } else {
+      parsedConfig.proxy.retryStdioToolCall = defaultEnvProxySettings.retryStdioToolCall;
+    }
 
-   // HTTP Retry Settings (during error handling)
-   const httpRetryEnvCatch = process.env.RETRY_HTTP_TOOL_CALL;
-   if (httpRetryEnvCatch && httpRetryEnvCatch.trim() !== '') {
-       proxySettingsFromEnvOrDefaults.retryHttpToolCall = httpRetryEnvCatch.toLowerCase() === 'true';
-   }
+    const stdioMaxRetriesEnv = process.env.STDIO_TOOL_CALL_MAX_RETRIES;
+    if (stdioMaxRetriesEnv && stdioMaxRetriesEnv.trim() !== '') {
+      const numVal = parseInt(stdioMaxRetriesEnv, 10);
+      if (!isNaN(numVal)) {
+        parsedConfig.proxy.stdioToolCallMaxRetries = numVal;
+      } else {
+        logger.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
+        parsedConfig.proxy.stdioToolCallMaxRetries = defaultEnvProxySettings.stdioToolCallMaxRetries;
+      }
+    } else {
+      parsedConfig.proxy.stdioToolCallMaxRetries = defaultEnvProxySettings.stdioToolCallMaxRetries;
+    }
 
-   const maxRetriesEnvCatch = process.env.HTTP_TOOL_CALL_MAX_RETRIES;
-   if (maxRetriesEnvCatch && maxRetriesEnvCatch.trim() !== '') {
-       const numVal = parseInt(maxRetriesEnvCatch, 10);
-       if (!isNaN(numVal)) {
-           proxySettingsFromEnvOrDefaults.httpToolCallMaxRetries = numVal;
-       } else {
-           logger.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
-       }
-   }
+    const stdioDelayBaseEnv = process.env.STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (stdioDelayBaseEnv && stdioDelayBaseEnv.trim() !== '') {
+      const numVal = parseInt(stdioDelayBaseEnv, 10);
+      if (!isNaN(numVal)) {
+        parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = numVal;
+      } else {
+        logger.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnv}". Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
+        parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs;
+      }
+    } else {
+      parsedConfig.proxy.stdioToolCallRetryDelayBaseMs = defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs;
+    }
 
-   const delayBaseEnvCatch = process.env.HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS;
-   if (delayBaseEnvCatch && delayBaseEnvCatch.trim() !== '') {
-       const numVal = parseInt(delayBaseEnvCatch, 10);
-       if (!isNaN(numVal)) {
-           proxySettingsFromEnvOrDefaults.httpToolCallRetryDelayBaseMs = numVal;
-       } else {
-           logger.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
-       }
-   }
+    logger.log("Loaded config with final proxy settings (after env overrides):", JSON.stringify(parsedConfig.proxy).slice(1, -1));
 
-   // STDIO Retry Settings (during error handling)
-   const stdioRetryEnvCatch = process.env.RETRY_STDIO_TOOL_CALL;
-   if (stdioRetryEnvCatch && stdioRetryEnvCatch.trim() !== '') {
-       proxySettingsFromEnvOrDefaults.retryStdioToolCall = stdioRetryEnvCatch.toLowerCase() === 'true';
-   }
+    // Add the determined separator to the config object
+    parsedConfig.serverToolnameSeparator = serverToolnameSeparator;
 
-   const stdioMaxRetriesEnvCatch = process.env.STDIO_TOOL_CALL_MAX_RETRIES;
-   if (stdioMaxRetriesEnvCatch && stdioMaxRetriesEnvCatch.trim() !== '') {
-       const numVal = parseInt(stdioMaxRetriesEnvCatch, 10);
-       if (!isNaN(numVal)) {
-           proxySettingsFromEnvOrDefaults.stdioToolCallMaxRetries = numVal;
-       } else {
-           logger.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
-       }
-   }
+    return parsedConfig;
 
-   const stdioDelayBaseEnvCatch = process.env.STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS;
-   if (stdioDelayBaseEnvCatch && stdioDelayBaseEnvCatch.trim() !== '') {
-       const numVal = parseInt(stdioDelayBaseEnvCatch, 10);
-       if (!isNaN(numVal)) {
-           proxySettingsFromEnvOrDefaults.stdioToolCallRetryDelayBaseMs = numVal;
-       } else {
-           logger.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
-       }
-   }
+  } catch (error: any) {
+    logger.error(`Error loading config/mcp_server.json: ${error.message}`);
 
-   logger.log("Using proxy settings from environment/defaults due to mcp_server.json load error:", proxySettingsFromEnvOrDefaults);
-   return {
-     mcpServers: {},
-     proxy: proxySettingsFromEnvOrDefaults,
-   };
- }
+    // If file loading fails, initialize with environment variables or defaults for proxy settings
+    const proxySettingsFromEnvOrDefaults: ProxySettings = {
+      retrySseToolCall: defaultEnvProxySettings.retrySseToolCall,
+      sseToolCallMaxRetries: defaultEnvProxySettings.sseToolCallMaxRetries, // Default for SSE max retries
+      sseToolCallRetryDelayBaseMs: defaultEnvProxySettings.sseToolCallRetryDelayBaseMs, // Default for SSE retry delay
+      retryHttpToolCall: defaultEnvProxySettings.retryHttpToolCall,
+      httpToolCallMaxRetries: defaultEnvProxySettings.httpToolCallMaxRetries,
+      httpToolCallRetryDelayBaseMs: defaultEnvProxySettings.httpToolCallRetryDelayBaseMs,
+      retryStdioToolCall: defaultEnvProxySettings.retryStdioToolCall,
+      stdioToolCallMaxRetries: defaultEnvProxySettings.stdioToolCallMaxRetries,
+      stdioToolCallRetryDelayBaseMs: defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs,
+    };
+
+    // SSE Retry Settings (during error handling)
+    const sseRetryEnvCatch = process.env.RETRY_SSE_TOOL_CALL; // Changed env var name
+    if (sseRetryEnvCatch && sseRetryEnvCatch.trim() !== '') {
+      proxySettingsFromEnvOrDefaults.retrySseToolCall = sseRetryEnvCatch.toLowerCase() === 'true'; // Changed property name
+    }
+
+    const sseMaxRetriesEnvCatch = process.env.SSE_TOOL_CALL_MAX_RETRIES;
+    if (sseMaxRetriesEnvCatch && sseMaxRetriesEnvCatch.trim() !== '') {
+      const numVal = parseInt(sseMaxRetriesEnvCatch, 10);
+      if (!isNaN(numVal)) {
+        proxySettingsFromEnvOrDefaults.sseToolCallMaxRetries = numVal;
+      } else {
+        logger.warn(`Invalid value for SSE_TOOL_CALL_MAX_RETRIES: "${sseMaxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.sseToolCallMaxRetries}.`);
+      }
+    }
+
+    const sseDelayBaseEnvCatch = process.env.SSE_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (sseDelayBaseEnvCatch && sseDelayBaseEnvCatch.trim() !== '') {
+      const numVal = parseInt(sseDelayBaseEnvCatch, 10);
+      if (!isNaN(numVal)) {
+        proxySettingsFromEnvOrDefaults.sseToolCallRetryDelayBaseMs = numVal;
+      } else {
+        logger.warn(`Invalid value for SSE_TOOL_CALL_RETRY_DELAY_BASE_MS: "${sseDelayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.sseToolCallRetryDelayBaseMs}.`);
+      }
+    }
+
+    // HTTP Retry Settings (during error handling)
+    const httpRetryEnvCatch = process.env.RETRY_HTTP_TOOL_CALL;
+    if (httpRetryEnvCatch && httpRetryEnvCatch.trim() !== '') {
+      proxySettingsFromEnvOrDefaults.retryHttpToolCall = httpRetryEnvCatch.toLowerCase() === 'true';
+    }
+
+    const maxRetriesEnvCatch = process.env.HTTP_TOOL_CALL_MAX_RETRIES;
+    if (maxRetriesEnvCatch && maxRetriesEnvCatch.trim() !== '') {
+      const numVal = parseInt(maxRetriesEnvCatch, 10);
+      if (!isNaN(numVal)) {
+        proxySettingsFromEnvOrDefaults.httpToolCallMaxRetries = numVal;
+      } else {
+        logger.warn(`Invalid value for HTTP_TOOL_CALL_MAX_RETRIES: "${maxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallMaxRetries}.`);
+      }
+    }
+
+    const delayBaseEnvCatch = process.env.HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (delayBaseEnvCatch && delayBaseEnvCatch.trim() !== '') {
+      const numVal = parseInt(delayBaseEnvCatch, 10);
+      if (!isNaN(numVal)) {
+        proxySettingsFromEnvOrDefaults.httpToolCallRetryDelayBaseMs = numVal;
+      } else {
+        logger.warn(`Invalid value for HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS: "${delayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.httpToolCallRetryDelayBaseMs}.`);
+      }
+    }
+
+    // STDIO Retry Settings (during error handling)
+    const stdioRetryEnvCatch = process.env.RETRY_STDIO_TOOL_CALL;
+    if (stdioRetryEnvCatch && stdioRetryEnvCatch.trim() !== '') {
+      proxySettingsFromEnvOrDefaults.retryStdioToolCall = stdioRetryEnvCatch.toLowerCase() === 'true';
+    }
+
+    const stdioMaxRetriesEnvCatch = process.env.STDIO_TOOL_CALL_MAX_RETRIES;
+    if (stdioMaxRetriesEnvCatch && stdioMaxRetriesEnvCatch.trim() !== '') {
+      const numVal = parseInt(stdioMaxRetriesEnvCatch, 10);
+      if (!isNaN(numVal)) {
+        proxySettingsFromEnvOrDefaults.stdioToolCallMaxRetries = numVal;
+      } else {
+        logger.warn(`Invalid value for STDIO_TOOL_CALL_MAX_RETRIES: "${stdioMaxRetriesEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallMaxRetries}.`);
+      }
+    }
+
+    const stdioDelayBaseEnvCatch = process.env.STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS;
+    if (stdioDelayBaseEnvCatch && stdioDelayBaseEnvCatch.trim() !== '') {
+      const numVal = parseInt(stdioDelayBaseEnvCatch, 10);
+      if (!isNaN(numVal)) {
+        proxySettingsFromEnvOrDefaults.stdioToolCallRetryDelayBaseMs = numVal;
+      } else {
+        logger.warn(`Invalid value for STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS: "${stdioDelayBaseEnvCatch}" (during error handling). Using default: ${defaultEnvProxySettings.stdioToolCallRetryDelayBaseMs}.`);
+      }
+    }
+
+    logger.log("Using proxy settings from environment/defaults due to mcp_server.json load error:", proxySettingsFromEnvOrDefaults);
+    return {
+      mcpServers: {},
+      proxy: proxySettingsFromEnvOrDefaults,
+      serverToolnameSeparator: serverToolnameSeparator, // Add the determined separator here too
+    };
+  }
 };
 
 

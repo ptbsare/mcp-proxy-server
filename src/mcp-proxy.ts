@@ -20,7 +20,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { createClients, ConnectedClient, reconnectSingleClient } from './client.js';
 import { logger } from './logger.js';
-import { Config, loadConfig, TransportConfig, isSSEConfig, isStdioConfig, isHttpConfig, ToolConfig, loadToolConfig } from './config.js';
+import { Config, loadConfig, TransportConfig, isSSEConfig, isStdioConfig, isHttpConfig, ToolConfig, loadToolConfig, DEFAULT_SERVER_TOOLNAME_SEPERATOR } from './config.js';
 import { z } from 'zod';
 import * as eventsource from 'eventsource';
 
@@ -34,6 +34,7 @@ const resourceToClientMap = new Map<string, ConnectedClient>();
 const promptToClientMap = new Map<string, ConnectedClient>();
 let currentToolConfig: ToolConfig = { tools: {} }; // Store loaded tool config
 let currentActiveServersConfig: Record<string, TransportConfig> = {}; // Added for retry logic
+let currentSeparator: string = DEFAULT_SERVER_TOOLNAME_SEPERATOR; // Store the current separator
 
 // Define Global Default Proxy Settings
 const defaultProxySettingsFull: Required<NonNullable<Config['proxy']>> = {
@@ -58,6 +59,9 @@ export const updateBackendConnections = async (newServerConfig: Config, newToolC
         ...defaultProxySettingsFull,
         ...(newServerConfig.proxy || {}),
     };
+    // Update the current separator from the new config
+    currentSeparator = newServerConfig.serverToolnameSeparator || DEFAULT_SERVER_TOOLNAME_SEPERATOR;
+    logger.log(`Using server toolname separator: "${currentSeparator}"`);
 
     const activeServersConfigLocal: Record<string, TransportConfig> = {}; // Renamed to avoid conflict with module-level
     for (const serverKey in newServerConfig.mcpServers) {
@@ -124,7 +128,7 @@ export const updateBackendConnections = async (newServerConfig: Config, newToolC
             const result = await connectedClient.client.request({ method: 'tools/list', params: {} }, ListToolsResultSchema);
             if (result.tools && result.tools.length > 0) {
                 for (const tool of result.tools) {
-                    const qualifiedName = `${connectedClient.name}--${tool.name}`; // Changed separator to --
+                    const qualifiedName = `${connectedClient.name}${currentSeparator}${tool.name}`; // Use the current separator
                     const toolSettings = currentToolConfig.tools[qualifiedName];
                     const isEnabled = !toolSettings || toolSettings.enabled !== false;
                     if (isEnabled) {
@@ -239,7 +243,7 @@ async function refreshBackendConnection(serverKey: string, serverConfig: Transpo
         const result = await connectedClient.client.request({ method: 'tools/list', params: {} }, ListToolsResultSchema);
         if (result.tools && result.tools.length > 0) {
             for (const tool of result.tools) {
-                const qualifiedName = `${connectedClient.name}--${tool.name}`;
+                const qualifiedName = `${connectedClient.name}${currentSeparator}${tool.name}`; // Use the current separator
                 const toolSettings = currentToolConfig.tools[qualifiedName];
                 const isEnabled = !toolSettings || toolSettings.enabled !== false;
                 if (isEnabled) {
@@ -316,7 +320,8 @@ export const getCurrentProxyState = () => {
         };
     });
     // Could add resources and prompts here if needed by admin UI later
-    return { tools };
+    // Also return the current separator for the frontend
+    return { tools, serverToolnameSeparator: currentSeparator };
 };
 
 // Helper function to identify connection errors

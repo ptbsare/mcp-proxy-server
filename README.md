@@ -174,6 +174,14 @@ Example `config/tool_config.json`:
     export TOOLS_FOLDER=/srv/mcp_tools
     ```
 
+-   **`SERVER_TOOLNAME_SEPERATOR`**: (Optional) Defines the separator used to combine the server name and tool name when generating the unique key for tools (e.g., `server-key--tool-name`). This key is used internally and in the `tool_config.json` file.
+    -   Default: `--`.
+    -   Must be at least 2 characters long and contain only letters (a-z, A-Z), numbers (0-9), hyphens (`-`), and underscores (`_`).
+    -   If the provided value is invalid, the default (`--`) will be used, and a warning will be logged.
+    ```bash
+    export SERVER_TOOLNAME_SEPERATOR="___" # Example: using triple underscore
+    ```
+
 -   **`LOGGING`**: (Optional) Controls the minimum log level output by the server.
     -   Possible values (case-insensitive): `error`, `warn`, `info`, `debug`.
     -   Logs at the specified level and all levels above it will be shown.
