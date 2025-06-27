@@ -4,7 +4,7 @@ const saveToolConfigButton = document.getElementById('save-tool-config-button');
 // const saveToolStatus = document.getElementById('save-tool-status'); // Removed: Declared in script.js
 // Note: Assumes currentToolConfig and discoveredTools variables are globally accessible from script.js or passed.
 // Note: Assumes triggerReload function is globally accessible from script.js or passed.
-let serverToolnameSeparator = '--'; // Default separator
+let serverToolnameSeparator = '__'; // Default separator
 
 // --- Tool Configuration Management ---
 async function loadToolData() {
@@ -33,7 +33,7 @@ async function loadToolData() {
         }
 
         const envResult = await envResponse.json(); // Parse environment info
-        serverToolnameSeparator = envResult.serverToolnameSeparator || '--'; // Update separator
+        serverToolnameSeparator = envResult.serverToolnameSeparator || '__'; // Update separator
         console.log(`Using server toolname separator from backend: "${serverToolnameSeparator}"`);
 
         renderTools(); // Render using both discovered and configured data

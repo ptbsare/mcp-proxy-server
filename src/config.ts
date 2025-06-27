@@ -47,7 +47,7 @@ export interface ProxySettings {
   stdioToolCallRetryDelayBaseMs?: number;
 }
 
-export const DEFAULT_SERVER_TOOLNAME_SEPERATOR = '--';
+export const DEFAULT_SERVER_TOOLNAME_SEPERATOR = '__'; // Changed default separator
 export const SERVER_TOOLNAME_SEPERATOR_ENV_VAR = 'SERVER_TOOLNAME_SEPERATOR';
 
 export interface Config {

@@ -121,18 +121,18 @@ Example `config/tool_config.json`:
 ```json
 {
   "tools": {
-    "unique-server-key1--tool-name-from-server": {
+    "unique-server-key1__tool-name-from-server": {
       "enabled": true,
       "displayName": "My Custom Tool Name",
       "description": "A more user-friendly description."
     },
-    "another-sse-server--another-tool": {
+    "another-sse-server__another-tool": {
       "enabled": false
     }
   }
 }
 ```
-- Keys are in the format `<server_key>--<original_tool_name>`.
+- Keys are in the format `<server_key><separator><original_tool_name>`, where `<separator>` is the value of the `SERVER_TOOLNAME_SEPERATOR` environment variable (defaults to `__`).
 - `enabled`: (Optional, default: `true`) Set to `false` to hide this tool from clients connecting to the proxy.
 - `displayName`: (Optional) Override the tool's name in client UIs.
 - `description`: (Optional) Override the tool's description.
@@ -174,10 +174,10 @@ Example `config/tool_config.json`:
     export TOOLS_FOLDER=/srv/mcp_tools
     ```
 
--   **`SERVER_TOOLNAME_SEPERATOR`**: (Optional) Defines the separator used to combine the server name and tool name when generating the unique key for tools (e.g., `server-key--tool-name`). This key is used internally and in the `tool_config.json` file.
-    -   Default: `--`.
+-   **`SERVER_TOOLNAME_SEPERATOR`**: (Optional) Defines the separator used to combine the server name and tool name when generating the unique key for tools (e.g., `server-key__tool-name`). This key is used internally and in the `tool_config.json` file.
+    -   Default: `__`.
     -   Must be at least 2 characters long and contain only letters (a-z, A-Z), numbers (0-9), hyphens (`-`), and underscores (`_`).
-    -   If the provided value is invalid, the default (`--`) will be used, and a warning will be logged.
+    -   If the provided value is invalid, the default (`__`) will be used, and a warning will be logged.
     ```bash
     export SERVER_TOOLNAME_SEPERATOR="___" # Example: using triple underscore
     ```
