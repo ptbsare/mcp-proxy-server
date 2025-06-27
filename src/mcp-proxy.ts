@@ -1,4 +1,5 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { DEFAULT_REQUEST_TIMEOUT_MSEC } from "@modelcontextprotocol/sdk/shared/protocol.js"; // Import the constant
 import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
@@ -36,13 +37,15 @@ let currentActiveServersConfig: Record<string, TransportConfig> = {}; // Added f
 
 // Define Global Default Proxy Settings
 const defaultProxySettingsFull: Required<NonNullable<Config['proxy']>> = {
-    retrySseToolCallOnDisconnect: true,
+    retrySseToolCall: true, // Renamed from retrySseToolCallOnDisconnect
+    sseToolCallMaxRetries: 2,
+    sseToolCallRetryDelayBaseMs: 300,
     retryHttpToolCall: true,
     httpToolCallMaxRetries: 2,
     httpToolCallRetryDelayBaseMs: 300,
-    retryStdioToolCall: true, // Default for stdio retry
-    stdioToolCallMaxRetries: 2, // Default for stdio max retries
-    stdioToolCallRetryDelayBaseMs: 300, // Default for stdio retry delay
+    retryStdioToolCall: true,
+    stdioToolCallMaxRetries: 2,
+    stdioToolCallRetryDelayBaseMs: 300,
 };
 
 let currentProxyConfig: Required<NonNullable<Config['proxy']>> = { ...defaultProxySettingsFull }; // Initialize with full defaults
@@ -439,146 +442,101 @@ export const createServer = async () => {
     let { client: clientForTool, toolInfo } = mapEntry; // toolInfo here is the correct one from the found mapEntry
     const originalToolNameForBackend = toolInfo.name; // The actual name the backend server expects (from the original toolInfo)
 
-    try {
-      logger.log(`Received tool call for exposed name '${requestedExposedName}' (original qualified name: '${originalQualifiedName}'). Forwarding to server '${clientForTool.name}' as tool '${originalToolNameForBackend}' (Attempt 1)`);
-      const backendResponse = await clientForTool.client.request(
-        {
-          method: 'tools/call',
-          params: { name: originalToolNameForBackend, arguments: args || {}, _meta: { progressToken: request.params._meta?.progressToken } }
-        },
-        CompatibilityCallToolResultSchema
-      );
-      logger.log(`[Tool Call] Backend response received for '${requestedExposedName}':'${JSON.stringify(backendResponse)}' . Passing to SDK Server.`);
-      return backendResponse;
-    } catch (error: any) {
-      logger.warn(`Initial attempt to call tool '${requestedExposedName}' failed: ${error.message}`);
+    // --- Retry Logic ---
+    // Use HTTP retry settings for SSE as a fallback for retry count and delay
+    const maxRetries = clientForTool.transportType === 'sse' ? (currentProxyConfig.retrySseToolCall ? currentProxyConfig.sseToolCallMaxRetries : 0) : // Use SSE specific max retries, check retrySseToolCall
+                       clientForTool.transportType === 'stdio' ? (currentProxyConfig.retryStdioToolCall ? currentProxyConfig.stdioToolCallMaxRetries : 0) :
+                       clientForTool.transportType === 'http' ? (currentProxyConfig.retryHttpToolCall ? currentProxyConfig.httpToolCallMaxRetries : 0) : 0;
+    const retryDelayBaseMs = clientForTool.transportType === 'sse' ? currentProxyConfig.sseToolCallRetryDelayBaseMs : // Use SSE specific retry delay
+                             clientForTool.transportType === 'stdio' ? (currentProxyConfig.retryStdioToolCall ? currentProxyConfig.stdioToolCallRetryDelayBaseMs : 0) : // Added check for stdio retry enabled
+                             clientForTool.transportType === 'http' ? (currentProxyConfig.retryHttpToolCall ? currentProxyConfig.httpToolCallRetryDelayBaseMs : 0) : 0; // Added check for http retry enabled
 
-      // Access currentProxyConfig directly as it's guaranteed to be defined
-      const shouldRetrySse = currentProxyConfig.retrySseToolCallOnDisconnect !== false;
+    let lastError: any = null;
 
-      if (clientForTool.transportType === 'sse' && isConnectionError(error) && shouldRetrySse) {
-        logger.log(`SSE connection error for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting reconnect and retry.`);
-        const clientTransportConfig = currentActiveServersConfig[clientForTool.name];
-        if (!clientTransportConfig) {
-          logger.error(`Cannot retry SSE: TransportConfig for server '${clientForTool.name}' not found.`);
-          throw new Error(`Error calling tool '${requestedExposedName}': Original error: ${error.message}. SSE Retry failed: server configuration not found.`);
-        }
-        const refreshed = await refreshBackendConnection(clientForTool.name, clientTransportConfig);
-        if (refreshed) {
-          logger.log(`Successfully reconnected to server '${clientForTool.name}' via SSE. Retrying tool call for '${requestedExposedName}'.`);
-          const newMapEntry = toolToClientMap.get(originalQualifiedName);
-          if (!newMapEntry) {
-            logger.error(`Tool '${originalQualifiedName}' not found in map after successful SSE refresh for server '${clientForTool.name}'.`);
-            throw new Error(`Error calling tool '${requestedExposedName}': Original error: ${error.message}. SSE Retry failed: tool not found in map after refresh.`);
-          }
-          clientForTool = newMapEntry.client;
-          toolInfo = newMapEntry.toolInfo;
-          try {
-            logger.log(`Retrying tool call (SSE) for '${requestedExposedName}' to server '${clientForTool.name}' as tool '${originalToolNameForBackend}' (Attempt 2)`);
-            return await clientForTool.client.request(
-              { method: 'tools/call', params: { name: originalToolNameForBackend, arguments: args || {}, _meta: { progressToken: request.params._meta?.progressToken } } },
-              CompatibilityCallToolResultSchema
-            );
-          } catch (retryError: any) {
-            const errorMessage = `Error calling tool '${requestedExposedName}' (on backend '${clientForTool.name}') after SSE retry: ${retryError.message || 'An unknown error occurred during retry'}`;
-            logger.error(errorMessage, retryError);
-            throw new Error(errorMessage);
-          }
-        } else {
-          const errorMessage = `Error calling tool '${requestedExposedName}': SSE Reconnection to server '${clientForTool.name}' failed. Original error: ${error.message || 'An unknown error occurred'}`;
-          logger.error(errorMessage);
-          throw new Error(errorMessage);
-        }
-      }
-      // STDIO Retry Logic
-      else if (clientForTool.transportType === 'stdio' &&
-               (currentProxyConfig.retryStdioToolCall !== false) && // Retry enabled by default, access directly
-               isConnectionError(error)) {
-
-        // Access properties directly. Defaults are assured by currentProxyConfig's initialization.
-        const maxRetries = currentProxyConfig.stdioToolCallMaxRetries;
-        const retryDelayBaseMs = currentProxyConfig.stdioToolCallRetryDelayBaseMs;
-        let lastError: any = error;
-
-        logger.log(`STDIO connection error for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting up to ${maxRetries} retries.`);
-
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-          try {
-            const delay = retryDelayBaseMs * Math.pow(2, attempt) + (Math.random() * retryDelayBaseMs * 0.5);
-            logger.log(`STDIO tool call failed for '${requestedExposedName}'. Attempt ${attempt + 1}/${maxRetries}. Retrying in ${delay.toFixed(0)}ms...`);
+    // Loop includes the initial attempt (attempt 0) plus maxRetries
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        if (attempt > 0) {
+            const delay = retryDelayBaseMs * Math.pow(2, attempt - 1) + (Math.random() * retryDelayBaseMs * 0.5);
+            logger.log(`Tool call failed for '${requestedExposedName}'. Attempt ${attempt}/${maxRetries}. Retrying in ${delay.toFixed(0)}ms...`);
             await sleep(delay);
 
-            logger.log(`Retrying tool call (STDIO) for '${requestedExposedName}' to server '${clientForTool.name}' as tool '${originalToolNameForBackend}' (Attempt ${attempt + 2})`);
-            return await clientForTool.client.request(
-              { method: 'tools/call', params: { name: originalToolNameForBackend, arguments: args || {}, _meta: { progressToken: request.params._meta?.progressToken } } },
-              CompatibilityCallToolResultSchema
-            );
-          } catch (retryError: any) {
-            lastError = retryError;
-            logger.error(`STDIO tool call retry attempt ${attempt + 1}/${maxRetries} for '${requestedExposedName}' failed:`, retryError.message);
-            if (attempt === maxRetries - 1) {
-              break;
+            // For SSE, attempt reconnect before retrying the call if the last error was a connection error
+            if (clientForTool.transportType === 'sse' && isConnectionError(lastError)) {
+                 logger.log(`SSE connection error for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting reconnect before retry.`);
+                 const clientTransportConfig = currentActiveServersConfig[clientForTool.name];
+                 if (!clientTransportConfig) {
+                   logger.error(`Cannot retry SSE: TransportConfig for server '${clientForTool.name}' not found.`);
+                   // If config is missing, we can't reconnect, so break retry loop
+                   break;
+                 }
+                 const refreshed = await refreshBackendConnection(clientForTool.name, clientTransportConfig);
+                 if (refreshed) {
+                   logger.log(`Successfully reconnected to server '${clientForTool.name}' via SSE.`);
+                   // Update clientForTool and toolInfo references after refresh
+                   const newMapEntry = toolToClientMap.get(originalQualifiedName);
+                   if (!newMapEntry) {
+                     logger.error(`Tool '${originalQualifiedName}' not found in map after successful SSE refresh for server '${clientForTool.name}'.`);
+                     // If tool disappears after refresh, something is wrong, break retry loop
+                     break;
+                   }
+                   clientForTool = newMapEntry.client;
+                   toolInfo = newMapEntry.toolInfo;
+                 } else {
+                   logger.error(`SSE Reconnection to server '${clientForTool.name}' failed.`);
+                   // If reconnect fails, break retry loop
+                   break;
+                 }
             }
-          }
         }
-        const errorMessage = `Error calling STDIO tool '${requestedExposedName}' after ${maxRetries} retries (on backend server '${clientForTool.name}', original tool name '${originalToolNameForBackend}'): ${lastError.message || 'An unknown error occurred'}`;
-        logger.error(errorMessage, lastError);
-        throw new Error(errorMessage);
 
-      }
-      // HTTP Retry Logic
-      else if (clientForTool.transportType === 'http' &&
-               (currentProxyConfig.retryHttpToolCall !== false) && // Retry enabled by default, access directly
-               isConnectionError(error)) {
-        
-        // Access properties directly. Defaults are assured by currentProxyConfig's initialization.
-        const maxRetries = currentProxyConfig.httpToolCallMaxRetries;
-        const retryDelayBaseMs = currentProxyConfig.httpToolCallRetryDelayBaseMs;
-        let lastError: any = error;
-
-        logger.log(`HTTP connection error for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting up to ${maxRetries} retries.`);
-
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-          try {
-            const delay = retryDelayBaseMs * Math.pow(2, attempt) + (Math.random() * retryDelayBaseMs * 0.5);
-            logger.log(`HTTP tool call failed for '${requestedExposedName}'. Attempt ${attempt + 1}/${maxRetries}. Retrying in ${delay.toFixed(0)}ms...`);
-            await sleep(delay);
-            
-            logger.log(`Retrying tool call (HTTP) for '${requestedExposedName}' to server '${clientForTool.name}' as tool '${originalToolNameForBackend}' (Attempt ${attempt + 2})`);
-            return await clientForTool.client.request(
-              { method: 'tools/call', params: { name: originalToolNameForBackend, arguments: args || {}, _meta: { progressToken: request.params._meta?.progressToken } } },
-              CompatibilityCallToolResultSchema
+        try {
+            logger.log(`Forwarding tool call for exposed name '${requestedExposedName}' (original qualified name: '${originalQualifiedName}'). Forwarding to server '${clientForTool.name}' as tool '${originalToolNameForBackend}' (Attempt ${attempt + 1})`);
+            // Explicitly set a timeout for the request using SDK's RequestOptions
+            const backendResponse = await clientForTool.client.request(
+                {
+                    method: 'tools/call',
+                    params: { name: originalToolNameForBackend, arguments: args || {}, _meta: { progressToken: request.params._meta?.progressToken } }
+                },
+                CompatibilityCallToolResultSchema,
+                { timeout: DEFAULT_REQUEST_TIMEOUT_MSEC } // Set timeout explicitly
             );
-          } catch (retryError: any) {
-            lastError = retryError;
-            logger.error(`HTTP tool call retry attempt ${attempt + 1}/${maxRetries} for '${requestedExposedName}' failed:`, retryError.message);
-            if (attempt === maxRetries - 1) {
-              break;
-            }
-          }
-        }
-        const errorMessage = `Error calling HTTP tool '${requestedExposedName}' after ${maxRetries} retries (on backend server '${clientForTool.name}', original tool name '${originalToolNameForBackend}'): ${lastError.message || 'An unknown error occurred'}`;
-        logger.error(errorMessage, lastError);
-        throw new Error(errorMessage);
+            logger.log(`[Tool Call] Backend response received for '${requestedExposedName}'. Passing to SDK Server.`);
+            return backendResponse; // Success! Return the response.
+        } catch (error: any) {
+            lastError = error;
+            logger.warn(`Attempt ${attempt + 1} to call tool '${requestedExposedName}' failed: ${error.message}`);
 
-      } else {
-        let reason = "Unknown reason for no retry.";
-        const shouldRetryStdio = currentProxyConfig.retryStdioToolCall !== false; // Access directly
-        if (clientForTool.transportType === 'sse' && !shouldRetrySse) reason = "SSE retry disabled in config";
-        else if (clientForTool.transportType === 'sse' && !isConnectionError(error)) reason = "Error not a connection error for SSE";
-        else if (clientForTool.transportType === 'stdio' && !shouldRetryStdio) reason = "STDIO retry disabled in config"; // Check stdio retry flag
-        else if (clientForTool.transportType === 'stdio' && !isConnectionError(error)) reason = "Error not a connection error for STDIO"; // Check stdio connection error
-        else if (clientForTool.transportType === 'http' && (currentProxyConfig.retryHttpToolCall === false)) reason = "HTTP retry disabled in config"; // Access directly
-        else if (clientForTool.transportType === 'http' && !isConnectionError(error)) reason = "Error not a connection error for HTTP";
-        else if (clientForTool.transportType !== 'sse' && clientForTool.transportType !== 'http' && clientForTool.transportType !== 'stdio') reason = `Unsupported transport type for retry: ${clientForTool.transportType}`; // Add stdio to check
-        
-        logger.warn(`Not retrying tool call for '${requestedExposedName}'. Reason: ${reason}. Original error: ${error.message}`);
-        const errorMessage = `Error calling tool '${requestedExposedName}' (on backend server '${clientForTool.name}', original tool name '${originalToolNameForBackend}'): ${error.message || 'An unknown error occurred'}`;
-        logger.error(errorMessage, error);
-        throw new Error(errorMessage);
-      }
+            // Check if this error warrants a retry based on type and configuration
+            const isRetryableError = isConnectionError(error) || (error?.name === 'McpError' && error?.code === -32001); // Consider timeout as retryable
+            const shouldRetry = (clientForTool.transportType === 'sse' && currentProxyConfig.retrySseToolCall && isRetryableError) || // Check retrySseToolCall
+                                (clientForTool.transportType === 'stdio' && currentProxyConfig.retryStdioToolCall && isRetryableError) ||
+                                (clientForTool.transportType === 'http' && currentProxyConfig.retryHttpToolCall && isRetryableError);
+
+
+            if (!shouldRetry && attempt === 0) {
+                 // If it's the first attempt and not a retryable error type, re-throw immediately
+                 logger.error(`Tool call for '${requestedExposedName}' failed with non-retryable error on first attempt: ${error.message}`, error);
+                 throw error;
+            }
+
+             if (!shouldRetry && attempt > 0) {
+                 // If it's a subsequent attempt and the error is no longer retryable (e.g., backend returned a specific error after reconnect)
+                 logger.error(`Tool call for '${requestedExposedName}' failed with non-retryable error after retries: ${error.message}`, error);
+                 throw error;
+            }
+
+            // If it's a retryable error and we are within maxRetries, the loop continues.
+            // If it's a retryable error but we are at maxRetries, the loop will exit after this iteration.
+        }
     }
-  });
+
+    // If the loop finishes without returning, it means all retries failed.
+    const errorMessage = `Error calling tool '${requestedExposedName}' after ${maxRetries} retries (on backend server '${clientForTool.name}', original tool name '${originalToolNameForBackend}'): ${lastError?.message || 'An unknown error occurred'}`;
+    logger.error(errorMessage, lastError);
+    throw new Error(errorMessage);
+});
+
+// ... rest of the file ...
 
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     const { name } = request.params;

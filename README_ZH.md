@@ -183,9 +183,17 @@
     export LOGGING="debug"
     ```
 
--   **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`**: (可选) 控制 SSE 工具调用失败时是否自动重连并重试。设置为 `"true"` 启用，`"false"` 禁用。默认: `true`。有关详细信息，请参阅“增强的可靠性特性”部分。
+-   **`RETRY_SSE_TOOL_CALL`**: (可选) 控制 SSE 工具调用失败时是否自动重连并重试。设置为 `"true"` 启用，`"false"` 禁用。默认: `true`。有关详细信息，请参阅“增强的可靠性特性”部分。
     ```bash
-    export RETRY_SSE_TOOL_CALL_ON_DISCONNECT="true"
+    export RETRY_SSE_TOOL_CALL="true"
+    ```
+-   **`SSE_TOOL_CALL_MAX_RETRIES`**: (可选) SSE 工具调用最大重试次数（在初始失败后）。默认: `2`。有关详细信息，请参阅“增强的可靠性特性”部分。
+    ```bash
+    export SSE_TOOL_CALL_MAX_RETRIES="2"
+    ```
+-   **`SSE_TOOL_CALL_RETRY_DELAY_BASE_MS`**: (可选) SSE 工具调用重试延迟基准（毫秒），用于指数退避。默认: `300`。有关详细信息，请参阅“增强的可靠性特性”部分。
+    ```bash
+    export SSE_TOOL_CALL_RETRY_DELAY_BASE_MS="300"
     ```
 -   **`RETRY_HTTP_TOOL_CALL`**: (可选) 控制 HTTP 工具调用连接错误时是否重试。设置为 `"true"` 启用，`"false"` 禁用。默认: `true`。有关详细信息，请参阅“增强的可靠性特性”部分。
     ```bash
@@ -220,22 +228,32 @@ MCP 代理服务器包含多项特性，用以提升其自身弹性以及与后�
 代理服务器确保从后端 MCP 服务产生的错误能够一致地传播给请求客户端。这些错误被格式化为标准的 JSON-RPC 错误响应，使客户端更容易统一处理它们。
 
 ### 2. SSE 工具调用的连接重试
-当对基于 SSE 的后端服务器执行 `tools/call` 操作时，如果底层连接丢失或遇到错误，代理服务器将自动尝试：
-1.  重新建立与 SSE 后端的连接。
-2.  如果重新连接成功，它将重试原始的 `tools/call` 请求**一次**。
+当对基于 SSE 的后端服务器执行 `tools/call` 操作时，如果底层连接丢失或遇到错误（包括超时），代理服务器将实现重试机制。
 
-此行为有助于缓解可能暂时中断 SSE 连接的瞬时网络问题。
+**重试机制：**
+如果初始 SSE 工具调用因连接错误或超时而失败，代理将尝试重新建立与 SSE 后端的连接。如果重新连接成功，它将使用指数退避策略重试原始的 `tools/call` 请求，类似于 HTTP 和 Stdio 重试。这意味着每次后续重试尝试之前的延迟会指数级增加，并加入少量抖动（随机性）。
 
 **配置:**
-此功能主要通过 **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`** 环境变量控制。
--   **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`** (环境变量):
-    -   设置为 `"true"` 以启用自动重新连接和重试。
+这些设置主要通过环境变量控制。如果 `config/mcp_server.json` 中 `proxy` 对象下存在这些特定键的值，它们将被环境变量覆盖。
+
+-   **`RETRY_SSE_TOOL_CALL`** (环境变量):
+    -   设置为 `"true"` 以启用 SSE 工具调用的重试。
     -   设置为 `"false"` 以禁用此功能。
     -   **默认行为:** `true` (如果环境变量未设置、为空或为无效值)。
 
+-   **`SSE_TOOL_CALL_MAX_RETRIES`** (环境变量):
+    -   指定在初次失败尝试*之后*的最大重试次数。例如，如果设置为 `"2"`，则会有一次初始尝试和最多两次重试尝试，总共最多三次尝试。
+    -   **默认行为:** `2` (如果环境变量未设置、为空或不是一个有效的整数)。
+
+-   **`SSE_TOOL_CALL_RETRY_DELAY_BASE_MS`** (环境变量):
+    -   用于指数退避计算的基准延迟（以毫秒为单位）。第 *n* 次重试（0索引）之前的延迟大约是 `SSE_TOOL_CALL_RETRY_DELAY_BASE_MS * (2^n) + 抖动`。
+    -   **默认行为:** `300` (毫秒) (如果环境变量未设置、为空或不是一个有效的整数)。
+
 **示例 (环境变量):**
 ```bash
-export RETRY_SSE_TOOL_CALL_ON_DISCONNECT="true"
+export RETRY_SSE_TOOL_CALL="true"
+export SSE_TOOL_CALL_MAX_RETRIES="3"
+export SSE_TOOL_CALL_RETRY_DELAY_BASE_MS="500"
 ```
 
 ### 3. HTTP 工具调用的请求重试
@@ -283,8 +301,8 @@ export RETRY_SSE_TOOL_CALL_ON_DISCONNECT="true"
     -   **默认行为:** `300` (毫秒) (如果环境变量未设置、为空或不是一个有效的整数)。
 
 **环境变量解析通用说明:**
--   布尔环境变量（`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`，`RETRY_HTTP_TOOL_CALL`，`RETRY_STDIO_TOOL_CALL`）如果其小写值恰好是 `"true"`，则被视为 `true`。任何其他值（包括空或未设置）将应用默认值，或者如果默认值为 `false` 则为 `false`（尽管对于这些特定变量，默认值为 `true`）。
--   数字环境变量（`HTTP_TOOL_CALL_MAX_RETRIES`，`HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`，`STDIO_TOOL_CALL_MAX_RETRIES`，`STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS`）被解析为十进制整数。如果解析失败（例如，值不是数字，或变量为空/未设置），则使用默认值。
+-   布尔环境变量（`RETRY_SSE_TOOL_CALL`，`RETRY_HTTP_TOOL_CALL`，`RETRY_STDIO_TOOL_CALL`）如果其小写值恰好是 `"true"`，则被视为 `true`。任何其他值（包括空或未设置）将应用默认值，或者如果默认值为 `false` 则为 `false`（尽管对于这些特定变量，默认值为 `true`）。
+-   数字环境变量（`SSE_TOOL_CALL_MAX_RETRIES`，`SSE_TOOL_CALL_RETRY_DELAY_BASE_MS`，`HTTP_TOOL_CALL_MAX_RETRIES`，`HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`，`STDIO_TOOL_CALL_MAX_RETRIES`，`STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS`）被解析为十进制整数。如果解析失败（例如，值不是数字，或变量为空/未设置），则使用默认值。
 
 ## 开发
 
