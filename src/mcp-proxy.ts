@@ -16,7 +16,8 @@ import {
   ListResourceTemplatesResultSchema,
   ResourceTemplate,
   CompatibilityCallToolResultSchema,
-  GetPromptResultSchema
+  GetPromptResultSchema,
+  McpError
 } from "@modelcontextprotocol/sdk/types.js";
 import { createClients, ConnectedClient, reconnectSingleClient } from './client.js';
 import { logger } from './logger.js';
@@ -439,8 +440,9 @@ export const createServer = async () => {
 
     // If no entry was found after checking all enabled tools and their potential overrides
     if (!mapEntry || !originalQualifiedName) {
-        logger.error(`Attempted to call tool with exposed name "${requestedExposedName}", but no corresponding enabled tool or override configuration found.`);
-        throw new Error(`Unknown or disabled tool: ${requestedExposedName}`);
+        const errorMessage = `Attempted to call tool with exposed name "${requestedExposedName}", but no corresponding enabled tool or override configuration found.`;
+        logger.error(errorMessage);
+        throw new McpError(-32601, errorMessage); // Method not found error code
     }
 
     // Now we have the correct mapEntry and the originalQualifiedName
@@ -488,11 +490,11 @@ export const createServer = async () => {
                    toolInfo = newMapEntry.toolInfo;
                  } else {
                    logger.error(`SSE Reconnection to server '${clientForTool.name}' failed.`);
-                   // If reconnect fails, break retry loop
-                   break;
+                   // If reconnect fails, throw an error to exit the retry loop and propagate
+                   throw new McpError(-32000, `SSE Reconnection to server '${clientForTool.name}' failed for tool '${requestedExposedName}'.`);
                  }
-            }
-        }
+             }
+         }
 
         try {
             logger.log(`Forwarding tool call for exposed name '${requestedExposedName}' (original qualified name: '${originalQualifiedName}'). Forwarding to server '${clientForTool.name}' as tool '${originalToolNameForBackend}' (Attempt ${attempt + 1})`);
@@ -521,13 +523,23 @@ export const createServer = async () => {
             if (!shouldRetry && attempt === 0) {
                  // If it's the first attempt and not a retryable error type, re-throw immediately
                  logger.error(`Tool call for '${requestedExposedName}' failed with non-retryable error on first attempt: ${error.message}`, error);
-                 throw error;
+                 // If the error is already an McpError, re-throw it directly. Otherwise, wrap it.
+                 if (error instanceof McpError) {
+                     throw error;
+                 } else {
+                     throw new McpError(error?.code || -32000, error.message || 'An unknown error occurred', error?.data);
+                 }
             }
 
              if (!shouldRetry && attempt > 0) {
                  // If it's a subsequent attempt and the error is no longer retryable (e.g., backend returned a specific error after reconnect)
                  logger.error(`Tool call for '${requestedExposedName}' failed with non-retryable error after retries: ${error.message}`, error);
-                 throw error;
+                 // If the error is already an McpError, re-throw it directly. Otherwise, wrap it.
+                 if (error instanceof McpError) {
+                     throw error;
+                 } else {
+                     throw new McpError(error?.code || -32000, error.message || 'An unknown error occurred', error?.data);
+                 }
             }
 
             // If it's a retryable error and we are within maxRetries, the loop continues.
@@ -538,7 +550,8 @@ export const createServer = async () => {
     // If the loop finishes without returning, it means all retries failed.
     const errorMessage = `Error calling tool '${requestedExposedName}' after ${maxRetries} retries (on backend server '${clientForTool.name}', original tool name '${originalToolNameForBackend}'): ${lastError?.message || 'An unknown error occurred'}`;
     logger.error(errorMessage, lastError);
-    throw new Error(errorMessage);
+    // Ensure a structured McpError is returned to the client
+    throw new McpError(lastError?.code || -32000, errorMessage, lastError?.data);
 });
 
 // ... rest of the file ...
