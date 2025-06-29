@@ -121,18 +121,18 @@ Example `config/tool_config.json`:
 ```json
 {
   "tools": {
-    "unique-server-key1--tool-name-from-server": {
+    "unique-server-key1__tool-name-from-server": {
       "enabled": true,
       "displayName": "My Custom Tool Name",
       "description": "A more user-friendly description."
     },
-    "another-sse-server--another-tool": {
+    "another-sse-server__another-tool": {
       "enabled": false
     }
   }
 }
 ```
-- Keys are in the format `<server_key>--<original_tool_name>`.
+- Keys are in the format `<server_key><separator><original_tool_name>`, where `<separator>` is the value of the `SERVER_TOOLNAME_SEPERATOR` environment variable (defaults to `__`).
 - `enabled`: (Optional, default: `true`) Set to `false` to hide this tool from clients connecting to the proxy.
 - `displayName`: (Optional) Override the tool's name in client UIs.
 - `description`: (Optional) Override the tool's description.
@@ -173,6 +173,230 @@ Example `config/tool_config.json`:
     ```bash
     export TOOLS_FOLDER=/srv/mcp_tools
     ```
+
+-   **`SERVER_TOOLNAME_SEPERATOR`**: (Optional) Defines the separator used to combine the server name and tool name when generating the unique key for tools (e.g., `server-key__tool-name`). This key is used internally and in the `tool_config.json` file.
+    -   Default: `__`.
+    -   Must be at least 2 characters long and contain only letters (a-z, A-Z), numbers (0-9), hyphens (`-`), and underscores (`_`).
+    -   If the provided value is invalid, the default (`__`) will be used, and a warning will be logged.
+    ```bash
+    export SERVER_TOOLNAME_SEPERATOR="___" # Example: using triple underscore
+    ```
+
+-   **`LOGGING`**: (Optional) Controls the minimum log level output by the server.
+    -   Possible values (case-insensitive): `error`, `warn`, `info`, `debug`.
+    -   Logs at the specified level and all levels above it will be shown.
+    -   Default: `info`.
+    ```bash
+    export LOGGING="debug"
+    ```
+
+-   **`RETRY_SSE_TOOL_CALL`**: (Optional) Controls whether to enable retries for SSE tool calls. Set to `"true"` to enable, `"false"` to disable. Default: `true`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export RETRY_SSE_TOOL_CALL="true"
+    ```
+-   **`SSE_TOOL_CALL_MAX_RETRIES`**: (Optional) Maximum number of retry attempts for SSE tool calls (after the initial failure). Default: `2`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export SSE_TOOL_CALL_MAX_RETRIES="2"
+    ```
+-   **`SSE_TOOL_CALL_RETRY_DELAY_BASE_MS`**: (Optional) Base delay in milliseconds for SSE tool call retries, used in exponential backoff. Default: `300`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export SSE_TOOL_CALL_RETRY_DELAY_BASE_MS="300"
+    ```
+-   **`RETRY_HTTP_TOOL_CALL`**: (Optional) Controls whether to retry on HTTP tool call connection errors. Set to `"true"` to enable, `"false"` to disable. Default: `true`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export RETRY_HTTP_TOOL_CALL="true"
+    ```
+-   **`HTTP_TOOL_CALL_MAX_RETRIES`**: (Optional) Maximum number of retry attempts for HTTP tool calls (after the initial failure). Default: `2`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export HTTP_TOOL_CALL_MAX_RETRIES="3"
+    ```
+-   **`HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`**: (Optional) Base delay in milliseconds for HTTP tool call retries, used in exponential backoff. Default: `300`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS="500"
+    ```
+-   **`RETRY_STDIO_TOOL_CALL`**: (Optional) Controls whether to retry on Stdio tool call connection errors (attempts to restart the process). Set to `"true"` to enable, `"false"` to disable. Default: `true`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export RETRY_STDIO_TOOL_CALL="true"
+    ```
+-   **`STDIO_TOOL_CALL_MAX_RETRIES`**: (Optional) Maximum number of retry attempts for Stdio tool calls (after the initial failure). Default: `2`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export STDIO_TOOL_CALL_MAX_RETRIES="5"
+    ```
+-   **`STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS`**: (Optional) Base delay in milliseconds for Stdio tool call retries, used in exponential backoff. Default: `300`. See the "Enhanced Reliability Features" section for details.
+    ```bash
+    export STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS="1000"
+    ```
+
+## Enhanced Reliability Features
+
+The MCP Proxy Server includes features to improve its resilience and the reliability of interactions with backend MCP services, ensuring smoother operations and more consistent tool execution.
+
+### 1. Error Propagation
+The proxy server ensures that errors originating from backend MCP services are consistently propagated to the requesting client. These errors are formatted as standard JSON-RPC error responses, making it easier for clients to handle them uniformly.
+
+### 2. SSE Tool Call Retry
+When a `tools/call` operation is made to an SSE-based backend server, and the underlying connection is lost or experiences an error (including timeouts), the proxy server implements a retry mechanism.
+
+**Retry Mechanism:**
+If an initial SSE tool call fails due to a connection error or timeout, the proxy will attempt to re-establish the connection to the SSE backend. If reconnection is successful, it will then retry the original `tools/call` request using an exponential backoff strategy, similar to HTTP and Stdio retries. This means the delay before each subsequent retry attempt increases exponentially, with a small amount of jitter (randomness) added.
+
+**Configuration:**
+These settings are primarily controlled by environment variables. Values in `config/mcp_server.json` under the `proxy` object for these specific keys will be overridden by environment variables if set.
+
+-   **`RETRY_SSE_TOOL_CALL`** (environment variable):
+    -   Set to `"true"` to enable retries for SSE tool calls.
+    -   Set to `"false"` to disable this feature.
+    -   **Default Behavior:** `true` (if the environment variable is not set, is empty, or is an invalid value).
+
+-   **`SSE_TOOL_CALL_MAX_RETRIES`** (environment variable):
+    -   Specifies the maximum number of retry attempts *after* the initial failed attempt. For example, if set to `"2"`, there will be one initial attempt and up to two retry attempts, totaling a maximum of three attempts.
+    -   **Default Behavior:** `2` (if the environment variable is not set, is empty, or is not a valid integer).
+
+-   **`SSE_TOOL_CALL_RETRY_DELAY_BASE_MS`** (environment variable):
+    -   The base delay in milliseconds used in the exponential backoff calculation. The delay before the *n*-th retry (0-indexed) is roughly `SSE_TOOL_CALL_RETRY_DELAY_BASE_MS * (2^n) + jitter`.
+    -   **Default Behavior:** `300` (milliseconds) (if the environment variable is not set, is empty, or is not a valid integer).
+
+**Example (Environment Variables):**
+```bash
+export RETRY_SSE_TOOL_CALL="true"
+export SSE_TOOL_CALL_MAX_RETRIES="3"
+export SSE_TOOL_CALL_RETRY_DELAY_BASE_MS="500"
+```
+
+### 3. HTTP Request Retry for Tool Calls
+For `tools/call` operations directed to HTTP-based backend servers, the proxy implements a retry mechanism for connection errors (e.g., "failed to fetch", network timeouts).
+
+**Retry Mechanism:**
+If an initial HTTP request fails due to a connection error, the proxy will retry the request using an exponential backoff strategy. This means the delay before each subsequent retry attempt increases exponentially, with a small amount of jitter (randomness) added to prevent thundering herd scenarios.
+
+**Configuration:**
+These settings are primarily controlled by environment variables.
+
+-   **`RETRY_HTTP_TOOL_CALL`** (environment variable):
+    -   Set to `"true"` to enable retries for HTTP tool calls.
+    -   Set to `"false"` to disable this feature.
+    -   **Default Behavior:** `true` (if the environment variable is not set, is empty, or is an invalid value).
+
+-   **`HTTP_TOOL_CALL_MAX_RETRIES`** (environment variable):
+    -   Specifies the maximum number of retry attempts *after* the initial failed attempt. For example, if set to `"2"`，there will be one initial attempt and up to two retry attempts, totaling a maximum of three attempts.
+    -   **Default Behavior:** `2` (if the environment variable is not set, is empty, or is not a valid integer).
+
+-   **`HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`** (environment variable):
+    -   The base delay in milliseconds used in the exponential backoff calculation. The delay before the *n*-th retry (0-indexed) is roughly `HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS * (2^n) + jitter`.
+    -   **Default Behavior:** `300` (milliseconds) (if the environment variable is not set, is empty, or is not a valid integer).
+
+### 4. Stdio Connection Retry for Tool Calls
+For `tools/call` operations directed to Stdio-based backend servers, the proxy implements a retry mechanism for connection errors (e.g., process crash or unresponsiveness).
+
+**Retry Mechanism:**
+If an initial Stdio connection or tool call fails, the proxy will attempt to restart the Stdio process and retry the request. This mechanism follows an exponential backoff strategy similar to HTTP retries.
+
+**Configuration:**
+These settings are primarily controlled by environment variables.
+
+-   **`RETRY_STDIO_TOOL_CALL`** (environment variable):
+    -   Set to `"true"` to enable Stdio tool call retries.
+    -   Set to `"false"` to disable this feature.
+    -   **Default Behavior:** `true` (if the environment variable is not set, is empty, or is an invalid value).
+
+-   **`STDIO_TOOL_CALL_MAX_RETRIES`** (environment variable):
+    -   Specifies the maximum number of retry attempts *after* the initial failed attempt. For example, if set to `"2"`，there will be one initial attempt and up to two retry attempts, totaling a maximum of three attempts.
+    -   **Default Behavior:** `2` (if the environment variable is not set, is empty, or is not a valid integer).
+
+-   **`STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS`** (environment variable):
+    -   The base delay in milliseconds used in the exponential backoff calculation. The delay before the *n*-th retry (0-indexed) is roughly `STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS * (2^n) + jitter`.
+    -   **Default Behavior:** `300` (milliseconds) (if the environment variable is not set, is empty, or is not a valid integer).
+
+**General Notes on Environment Variable Parsing:**
+-   Boolean environment variables (`RETRY_SSE_TOOL_CALL`, `RETRY_HTTP_TOOL_CALL`, `RETRY_STDIO_TOOL_CALL`) are considered `true` if their lowercase value is exactly `"true"`. Any other value (including empty or not set) results in the default being applied or `false` if the default is `false` (though for these specific variables, the default is `true`)。
+-   Numeric environment variables (`SSE_TOOL_CALL_MAX_RETRIES`, `SSE_TOOL_CALL_RETRY_DELAY_BASE_MS`, `HTTP_TOOL_CALL_MAX_RETRIES`, `HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`, `STDIO_TOOL_CALL_MAX_RETRIES`, `STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS`) are parsed as base-10 integers. If parsing fails (e.g., the value is not a number, or the variable is empty/not set), the default value is used。
+
+## Development
+
+The MCP Proxy Server includes features to improve its resilience and the reliability of interactions with backend MCP services, ensuring smoother operations and more consistent tool execution.
+
+### 1. Error Propagation
+The proxy server ensures that errors originating from backend MCP services are consistently propagated to the requesting client. These errors are formatted as standard JSON-RPC error responses, making it easier for clients to handle them uniformly.
+
+### 2. SSE Connection Retry for Tool Calls
+When a `tools/call` operation is made to an SSE-based backend server, and the underlying connection is lost or experiences an error, the proxy server will automatically attempt to:
+1.  Re-establish the connection to the SSE backend.
+2.  If reconnection is successful, it will retry the original `tools/call` request **once**.
+
+This behavior helps mitigate transient network issues that might temporarily disrupt SSE connections.
+
+**Configuration:**
+This feature is primarily controlled by the **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`** environment variable.
+-   **`RETRY_SSE_TOOL_CALL_ON_DISCONNECT`** (environment variable):
+    -   Set to `"true"` to enable the automatic reconnect and retry.
+    -   Set to `"false"` to disable this feature.
+    -   **Default Behavior:** `true` (if the environment variable is not set, is empty, or is an invalid value).
+    -   *Note: If this setting is also present in `config/mcp_server.json` under `proxy`, the environment variable takes precedence.*
+
+**Example (Environment Variable):**
+```bash
+export RETRY_SSE_TOOL_CALL_ON_DISCONNECT="true"
+```
+*(The JSON example for `mcp_server.json` under "Proxy Behavior Configuration" illustrates where other proxy settings might go, but this specific setting is best managed via its environment variable.)*
+
+### 3. HTTP Request Retry for Tool Calls
+For `tools/call` operations directed to HTTP-based backend servers, the proxy implements a retry mechanism for connection errors (e.g., "failed to fetch", network timeouts).
+
+**Retry Mechanism:**
+If an initial HTTP request fails due to a connection error, the proxy will retry the request using an exponential backoff strategy. This means the delay before each subsequent retry attempt increases exponentially, with a small amount of jitter (randomness) added to prevent thundering herd scenarios.
+
+**Configuration:**
+These settings are primarily controlled by environment variables. Values in `config/mcp_server.json` under the `proxy` object for these specific keys will be overridden by environment variables if set.
+
+-   **`RETRY_HTTP_TOOL_CALL`** (environment variable):
+    -   Set to `"true"` to enable retries for HTTP tool calls.
+    -   Set to `"false"` to disable this feature.
+    -   **Default Behavior:** `true` (if the environment variable is not set, is empty, or is an invalid value).
+
+-   **`HTTP_TOOL_CALL_MAX_RETRIES`** (environment variable):
+    -   Specifies the maximum number of retry attempts *after* the initial failed attempt. For example, if set to `"2"`, there will be one initial attempt and up to two retry attempts, totaling a maximum of three attempts.
+    -   **Default Behavior:** `2` (if the environment variable is not set, is empty, or is not a valid integer).
+
+-   **`HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`** (environment variable):
+    -   The base delay in milliseconds used in the exponential backoff calculation. The delay before the *n*-th retry (0-indexed) is roughly `HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS * (2^n) + jitter`.
+    -   **Default Behavior:** `300` (milliseconds) (if the environment variable is not set, is empty, or is not a valid integer).
+
+**General Notes on Environment Variable Parsing:**
+-   Boolean environment variables (`RETRY_SSE_TOOL_CALL`, `RETRY_HTTP_TOOL_CALL`, `RETRY_STDIO_TOOL_CALL`) are considered `true` if their lowercase value is exactly `"true"`. Any other value (including empty or not set) results in the default being applied or `false` if the default is `false` (though for these specific variables, the default is `true`).
+-   Numeric environment variables (`SSE_TOOL_CALL_MAX_RETRIES`, `SSE_TOOL_CALL_RETRY_DELAY_BASE_MS`, `HTTP_TOOL_CALL_MAX_RETRIES`, `HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`, `STDIO_TOOL_CALL_MAX_RETRIES`, `STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS`) are parsed as base-10 integers. If parsing fails (e.g., the value is not a number, or the variable is empty/not set), the default value is used.
+
+**Example (Environment Variables):**
+```bash
+export RETRY_HTTP_TOOL_CALL="true"
+export HTTP_TOOL_CALL_MAX_RETRIES="3"
+export HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS="500"
+```
+
+### 4. Stdio Connection Retry for Tool Calls
+For `tools/call` operations directed to Stdio-based backend servers, the proxy implements a retry mechanism for connection errors (e.g., process crash or unresponsiveness).
+
+**Retry Mechanism:**
+If an initial Stdio connection or tool call fails, the proxy will attempt to restart the Stdio process and retry the request. This mechanism follows an exponential backoff strategy similar to HTTP retries.
+
+**Configuration:**
+These settings are primarily controlled by environment variables.
+
+-   **`RETRY_STDIO_TOOL_CALL`** (environment variable):
+    -   Set to `"true"` to enable Stdio tool call retries.
+    -   Set to `"false"` to disable this feature.
+    -   **Default Behavior:** `true` (if the environment variable is not set, is empty, or is an invalid value).
+
+-   **`STDIO_TOOL_CALL_MAX_RETRIES`** (environment variable):
+    -   Specifies the maximum number of retry attempts *after* the initial failed attempt. For example, if set to `"2"`, there will be one initial attempt and up to two retry attempts, totaling a maximum of three attempts.
+    -   **Default Behavior:** `2` (if the environment variable is not set, is empty, or is not a valid integer).
+
+-   **`STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS`** (environment variable):
+    -   The base delay in milliseconds used in the exponential backoff calculation. The delay before the *n*-th retry (0-indexed) is roughly `STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS * (2^n) + jitter`.
+    -   **Default Behavior:** `300` (milliseconds) (if the environment variable is not set, is empty, or is not a valid integer).
+
+**General Notes on Environment Variable Parsing:**
+-   Boolean environment variables (`RETRY_SSE_TOOL_CALL`, `RETRY_HTTP_TOOL_CALL`, `RETRY_STDIO_TOOL_CALL`) are considered `true` if their lowercase value is exactly `"true"`. Any other value (including empty or not set) results in the default being applied or `false` if the default is `false` (though for these specific variables, the default is `true`)。
+-   Numeric environment variables (`SSE_TOOL_CALL_MAX_RETRIES`, `SSE_TOOL_CALL_RETRY_DELAY_BASE_MS`, `HTTP_TOOL_CALL_MAX_RETRIES`, `HTTP_TOOL_CALL_RETRY_DELAY_BASE_MS`, `STDIO_TOOL_CALL_MAX_RETRIES`, `STDIO_TOOL_CALL_RETRY_DELAY_BASE_MS`) are parsed as base-10 integers. If parsing fails (e.g., the value is not a number, or the variable is empty/not set), the default value is used.
 
 ## Development
 

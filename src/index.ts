@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { logger } from './logger.js';
 import { createServer } from "./mcp-proxy.js";
 
 async function main() {
@@ -17,6 +18,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("Server error:", error);
+  logger.error("Server error:", error.message);
   process.exit(1);
 });
