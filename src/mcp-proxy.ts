@@ -334,7 +334,8 @@ const isConnectionError = (err: any): boolean => {
            lowerMessage.includes("connection closed") ||
            lowerMessage.includes("transport is closed") || // SDK specific
            lowerMessage.includes("failed to fetch") || 
-           lowerMessage.includes("not found") || //404
+           lowerMessage.includes("not found") || //Error POSTING session not found
+           lowerMessage.includes("404") || 
            lowerMessage.includes("eof") || // Network level
            lowerMessage.includes("tls") || // TLS handshake
            lowerMessage.includes("timeout") ||
