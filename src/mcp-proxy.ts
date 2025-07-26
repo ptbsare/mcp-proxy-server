@@ -463,38 +463,39 @@ export const createServer = async () => {
 
     // Loop includes the initial attempt (attempt 0) plus maxRetries
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        if (attempt > 0) {
-            const delay = retryDelayBaseMs * Math.pow(2, attempt - 1) + (Math.random() * retryDelayBaseMs * 0.5);
-            logger.log(`Tool call failed for '${requestedExposedName}'. Attempt ${attempt}/${maxRetries}. Retrying in ${delay.toFixed(0)}ms...`);
-            await sleep(delay);
-
+        if (attempt >= 0) {            
+            if (attempt > 0) {
+              const delay = retryDelayBaseMs * Math.pow(2, attempt - 1) + (Math.random() * retryDelayBaseMs * 0.5);
+              logger.log(`Tool call failed for '${requestedExposedName}'. Attempt ${attempt}/${maxRetries}. Retrying in ${delay.toFixed(0)}ms...`);
+              await sleep(delay);
+            }
             // For SSE, attempt reconnect before retrying the call if the last error was a connection error
-            if (clientForTool.transportType === 'sse' && isConnectionError(lastError)) {
-                 logger.log(`SSE connection error for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting reconnect before retry.`);
-                 const clientTransportConfig = currentActiveServersConfig[clientForTool.name];
-                 if (!clientTransportConfig) {
-                   logger.error(`Cannot retry SSE: TransportConfig for server '${clientForTool.name}' not found.`);
-                   // If config is missing, we can't reconnect, so break retry loop
-                   break;
-                 }
-                 const refreshed = await refreshBackendConnection(clientForTool.name, clientTransportConfig);
-                 if (refreshed) {
-                   logger.log(`Successfully reconnected to server '${clientForTool.name}' via SSE.`);
-                   // Update clientForTool and toolInfo references after refresh
-                   const newMapEntry = toolToClientMap.get(originalQualifiedName);
-                   if (!newMapEntry) {
-                     logger.error(`Tool '${originalQualifiedName}' not found in map after successful SSE refresh for server '${clientForTool.name}'.`);
-                     // If tool disappears after refresh, something is wrong, break retry loop
-                     break;
-                   }
-                   clientForTool = newMapEntry.client;
-                   toolInfo = newMapEntry.toolInfo;
-                 } else {
-                   logger.error(`SSE Reconnection to server '${clientForTool.name}' failed.`);
-                   // If reconnect fails, throw an error to exit the retry loop and propagate
-                   throw new McpError(-32000, `SSE Reconnection to server '${clientForTool.name}' failed for tool '${requestedExposedName}'.`);
-                 }
-             }
+            // For SSE, attempt reconnect before retrying the call if the last error was a connection error OR if it's the first attempt
+            if (clientForTool.transportType === 'sse') {
+                if (attempt === 0 || isConnectionError(lastError)) { // Force reconnect on first attempt for SSE, or if there was a connection error
+                    logger.log(`SSE connection handling for tool '${requestedExposedName}' on server '${clientForTool.name}'. Attempting reconnect.`);
+                    const clientTransportConfig = currentActiveServersConfig[clientForTool.name];
+                    if (!clientTransportConfig) {
+                        logger.error(`Cannot proceed with SSE: TransportConfig for server '${clientForTool.name}' not found.`);
+                        throw new McpError(-32000, `SSE TransportConfig for server '${clientForTool.name}' not found for tool '${requestedExposedName}'.`);
+                    }
+                    const refreshed = await refreshBackendConnection(clientForTool.name, clientTransportConfig);
+                    if (refreshed) {
+                        logger.log(`Successfully reconnected to server '${clientForTool.name}' via SSE.`);
+                        // Update clientForTool and toolInfo references after refresh
+                        const newMapEntry = toolToClientMap.get(originalQualifiedName);
+                        if (!newMapEntry) {
+                            logger.error(`Tool '${originalQualifiedName}' not found in map after successful SSE refresh for server '${clientForTool.name}'.`);
+                            throw new McpError(-32000, `Tool '${originalQualifiedName}' disappeared after SSE refresh for server '${clientForTool.name}'.`);
+                        }
+                        clientForTool = newMapEntry.client;
+                        toolInfo = newMapEntry.toolInfo;
+                    } else {
+                        logger.error(`SSE Reconnection to server '${clientForTool.name}' failed.`);
+                        throw new McpError(-32000, `SSE Reconnection to server '${clientForTool.name}' failed for tool '${requestedExposedName}'.`);
+                    }
+                }
+            }
          }
 
         try {
