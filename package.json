@@ -1,6 +1,6 @@
 {
   "name": "mcp-proxy-server",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": "ptbsare",
   "license": "MIT",
   "description": "An MCP proxy server that aggregates and serves multiple MCP resource servers through a single interface with stdio/sse support",
